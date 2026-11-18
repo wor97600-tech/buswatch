@@ -103,6 +103,15 @@ export function loadSaved() {
   })
 }
 
+// 多页面下每个页面各有独立的内存缓存，关注状态在别的页面改动后
+// 需要让本页重新从存储读取
+export function invalidateFollow() {
+  state.loaded = false
+  state.saved = []
+  stationsCache = null
+  stationsLoading = null
+}
+
 function ensureSaved() {
   if (state.loaded) {
     return Promise.resolve(state.saved)
@@ -308,6 +317,7 @@ export function setCitiesCache(cities) {
 
 export default {
   loadSaved,
+  invalidateFollow,
   saveLine,
   removeLine,
   getLineEntry,

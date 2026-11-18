@@ -224,6 +224,9 @@ const pageLogic = {
       store.isStationSaved(station).then((saved) => {
         self.stationFav = Boolean(saved)
       })
+      store.loadSaved().then((list) => {
+        self.savedLines = list || []
+      })
       if (!station.physicalStId) {
         this.resolveStation(station)
       } else {
@@ -270,6 +273,8 @@ const pageLogic = {
       this._shown = true
       return
     }
+    // 关注状态可能在别的页面改动过，重新从存储读取
+    store.invalidateFollow()
     if (this.mode === 'city') {
       return
     }
@@ -291,6 +296,19 @@ const pageLogic = {
           self.searchTip = `已切换到 ${self.cityName}，点「搜索」查询`
           return
         }
+      }
+      if (self.mode === 'station') {
+        store.loadSaved().then((list) => {
+          self.savedLines = list || []
+        })
+        return
+      }
+      if (self.mode === 'line') {
+        store.loadSaved().then((list) => {
+          self.savedLines = list || []
+          self.syncLineFollow()
+        })
+        return
       }
       self.savedLines = self.savedLines || []
       self.favStations = self.favStations || []
