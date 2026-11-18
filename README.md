@@ -66,9 +66,20 @@ BusWatch/
 npm run build          # 方屏 + 圆屏，debug + release
 npm run build:square   # 只构建方屏
 npm run build:round    # 只构建圆屏
+npm run build:release  # 只构建 release 包
 ```
 
 脚本按 `scripts/build.js` 中的 `TARGETS` 依次切换 `manifest.json` 的 `deviceTypeList` / `config.designWidth` 与 `style.css` 的样式入口，构建完成后自动还原。产物位于 `dist/packages/`。
+
+### 包体积
+
+默认构建会关闭 QuickJS 快照（`--enable-snapshot false`），避免为每个页面额外打包一份预编译字节码。多页面 release 包约 100 KB；如果开启快照会增加到约 240 KB。页面代码和功能逻辑不变，代价是首次加载时多一次脚本解析、启动略慢。
+
+如果更在意启动速度而不是安装包大小，可以重新打开快照：
+
+```powershell
+npm run build:snapshot
+```
 
 新增屏幕形态时，在 `TARGETS` 中增加一项（`deviceType`、`designWidth`、`style`），并在 `styles/` 下添加对应样式文件即可。
 

@@ -1,6 +1,6 @@
 {
   "name": "buswatch",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Haikou bus arrival watch app",
   "license": "MIT",
@@ -9,6 +9,7 @@
     "build:square": "node scripts/build.js --target square",
     "build:round": "node scripts/build.js --target round",
     "build:debug": "node scripts/build.js --mode debug",
-    "build:release": "node scripts/build.js --mode release"
+    "build:release": "node scripts/build.js --mode release",
+    "build:snapshot": "node scripts/build.js --snapshot"
   }
 }

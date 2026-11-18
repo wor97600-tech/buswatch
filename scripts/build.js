@@ -76,7 +76,12 @@ function resolvePacker() {
 }
 
 function parseArgs(argv) {
-  const options = { target: 'all', mode: 'both', out: path.join(root, 'dist/packages') }
+  const options = {
+    target: 'all',
+    mode: 'both',
+    snapshot: false,
+    out: path.join(root, 'dist/packages')
+  }
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--target') {
@@ -88,6 +93,10 @@ function parseArgs(argv) {
     } else if (arg === '--out') {
       options.out = path.resolve(root, argv[i + 1])
       i += 1
+    } else if (arg === '--snapshot') {
+      options.snapshot = true
+    } else if (arg === '--no-snapshot') {
+      options.snapshot = false
     }
   }
   return options
@@ -143,8 +152,16 @@ function newestRpk(dir) {
   return files[0] || null
 }
 
-function runPacker(packer, target, mode) {
-  const args = [packer, mode.command, '--device-type', target.deviceType, '--force'].concat(mode.extra)
+function runPacker(packer, target, mode, snapshot) {
+  const args = [
+    packer,
+    mode.command,
+    '--device-type',
+    target.deviceType,
+    '--force',
+    '--enable-snapshot',
+    snapshot ? 'true' : 'false'
+  ].concat(mode.extra)
   const result = spawnSync(process.execPath, args, { cwd: root, stdio: 'inherit' })
   if (result.status !== 0) {
     throw new Error(`${target.label} ${mode.id} 构建失败（退出码 ${result.status}）`)
@@ -194,12 +211,17 @@ function main() {
   process.on('SIGHUP', () => onSignal('SIGHUP'))
 
   try {
+    console.log(
+      options.snapshot
+        ? '快照: 开启（启动更快，包体更大）'
+        : '快照: 关闭（包体更小，首次启动会稍慢）'
+    )
     for (const target of targets) {
       writeStyleEntry(target)
       writeManifest(baseManifest, target)
       console.log(`\n=== ${target.label} ${target.deviceType} designWidth=${target.designWidth} ===`)
       for (const mode of modes) {
-        const rpk = runPacker(packer, target, mode)
+        const rpk = runPacker(packer, target, mode, options.snapshot)
         const outName = `buswatch-${target.id}-${version}-${mode.id}.rpk`
         const outPath = path.join(options.out, outName)
         fs.mkdirSync(options.out, { recursive: true })
