@@ -9,7 +9,8 @@ const config = {
     retry: 1,
     slowTimeout: 20000,
     slowRetry: 2,
-    searchTimeout: 12000
+    searchTimeout: 8000,
+    searchRetry: 2
   },
   net: {
     allowHttps: false,

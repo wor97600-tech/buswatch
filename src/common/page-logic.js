@@ -405,30 +405,6 @@ const pageLogic = {
       })
   },
 
-  prefetchAllCities() {
-    if (this._cityPrefetching) {
-      return
-    }
-    if (this.cityAll && this.cityAll.length > 0 && !this._cityAllFallback) {
-      return
-    }
-    const self = this
-    this._cityPrefetching = true
-    chelaile
-      .getCities({ hotOnly: false })
-      .then((result) => {
-        self.cityAll = result.cities || []
-        self._cityAllFallback = false
-        if (String(self.cityQuery || '').trim()) {
-          self.applyCityFilter()
-        }
-      })
-      .catch(() => null)
-      .then(() => {
-        self._cityPrefetching = false
-      })
-  },
-
   onCityQueryChange(event) {
     const raw = event && event.value !== undefined ? event.value : event
     if (typeof raw === 'string' || typeof raw === 'number') {
@@ -436,9 +412,6 @@ const pageLogic = {
     }
     if (!String(this.cityQuery || '').trim() || (this.cityAll && this.cityAll.length > 0)) {
       this.applyCityFilter()
-    }
-    if (String(this.cityQuery || '').trim()) {
-      this.prefetchAllCities()
     }
   },
 
@@ -474,37 +447,29 @@ const pageLogic = {
       self.citySearching = false
       self.applyCityFilter()
     }
-    const ready = Boolean(self.cityAll && self.cityAll.length > 0 && !self._cityAllFallback)
-    const run = () => {
-      if (ready) {
+    if (self.cityAll && self.cityAll.length > 0 && !self._cityAllFallback) {
+      setTimeout(finish, 120)
+      return
+    }
+    chelaile
+      .getCities({ hotOnly: false })
+      .then((result) => {
+        self.cityAll = result.cities || []
+        self._cityAllFallback = false
         finish()
-        return
-      }
-      chelaile
-        .getCities({ hotOnly: false })
-        .then((result) => {
-          self.cityAll = result.cities || []
-          self._cityAllFallback = false
-          finish()
-        })
-        .catch((error) => {
-          self.citySearching = false
-          if (self.cityHot && self.cityHot.length > 0) {
-            self.cityAll = self.cityHot.slice()
-            self._cityAllFallback = true
-            self.applyCityFilter()
-            self.cityHint = `${self.cityHint} · 完整列表加载失败`.trim()
-          } else {
-            self.cityError = `城市查找失败：${net.describeError(error)}`
-            self.cityHint = ''
-          }
-        })
-    }
-    if (ready) {
-      setTimeout(run, 250)
-    } else {
-      run()
-    }
+      })
+      .catch((error) => {
+        self.citySearching = false
+        if (self.cityHot && self.cityHot.length > 0) {
+          self.cityAll = self.cityHot.slice()
+          self._cityAllFallback = true
+          self.applyCityFilter()
+          self.cityHint = `${self.cityHint} · 完整列表加载失败`.trim()
+        } else {
+          self.cityError = `城市查找失败：${net.describeError(error)}`
+          self.cityHint = ''
+        }
+      })
   },
 
   applyCityFilter() {

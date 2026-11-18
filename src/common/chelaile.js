@@ -8,7 +8,9 @@ const TIMEOUT = config.chelaile.timeout
 const RETRY = config.chelaile.retry
 const SLOW_TIMEOUT = config.chelaile.slowTimeout || 20000
 const SLOW_RETRY = config.chelaile.slowRetry || 2
-const SEARCH_TIMEOUT = config.chelaile.searchTimeout || 12000
+const SEARCH_TIMEOUT = config.chelaile.searchTimeout || 8000
+const SEARCH_RETRY = config.chelaile.searchRetry === undefined ? 2 : config.chelaile.searchRetry
+const SEARCH_OPTIONS = { timeout: SEARCH_TIMEOUT, retry: SEARCH_RETRY }
 const TTL = config.cache
 const CITIES_TTL = 7 * 24 * 60 * 60 * 1000
 
@@ -175,13 +177,13 @@ export function searchAll(keyword, options) {
     const fresh = Boolean(entry && entry.ts && now - entry.ts < TTL.search)
     if (!opts.force && entry && entry.data) {
       if (!fresh) {
-        request('/v1/search', { city_id: cityId, keyword: text }, { timeout: SEARCH_TIMEOUT })
+        request('/v1/search', { city_id: cityId, keyword: text }, SEARCH_OPTIONS)
           .then((data) => store.setSearchCache(cacheKey, normalizeSearch(data)))
           .catch(() => null)
       }
       return withSearchMeta(entry.data, entry.ts, !fresh)
     }
-    return request('/v1/search', { city_id: cityId, keyword: text }, { timeout: SEARCH_TIMEOUT })
+    return request('/v1/search', { city_id: cityId, keyword: text }, SEARCH_OPTIONS)
       .then((data) => {
         const parsed = normalizeSearch(data)
         const ts = Date.now()
