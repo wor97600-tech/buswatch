@@ -362,9 +362,8 @@ const pageLogic = {
   goBack() {
     this.stopTimers()
     this.loading = false
-    if (this.mode === 'poi' || this.mode === 'city') {
+    if (this.mode === 'poi') {
       this.mode = 'search'
-      this.headerTitle = '搜索'
       return
     }
     router.back()
@@ -412,26 +411,9 @@ const pageLogic = {
     this.startSearch(keyword)
   },
 
-openCityPicker() {
+  openCityPicker() {
     this.stopTimers()
-    this.mode = 'city'
-    this.headerTitle = '选择城市'
-    this.cityQuery = ''
-    this.cityList = []
-    this.citySearching = false
-    this.cityDownloading = false
-    this.cityCacheReady = false
-    this.cityError = ''
-    this.cityHint = '点「下载城市缓存」获取全国城市'
-    const self = this
-    store.getCitiesCache().then((entry) => {
-      if (entry && Array.isArray(entry.cities) && entry.cities.length > 0) {
-        self.cityAll = entry.cities
-        self.cityCacheReady = true
-        self.cityHint = `城市缓存已就绪（${entry.cities.length} 个城市）`
-        self.applyCityFilter()
-      }
-    })
+    router.push({ uri: '/pages/City', params: { view: 'city' } })
   },
 
   loadCityList(force) {
@@ -591,7 +573,7 @@ openCityPicker() {
     this.cityHint = matches.length ? `找到 ${matches.length} 个城市` : '没有匹配的城市'
   },
 
-pickCity(item) {
+  pickCity(item) {
     if (!item) {
       return
     }
@@ -602,14 +584,8 @@ pickCity(item) {
     }
     chelaile.setCityId(city.cityId)
     store.setSelectedCity(city)
-    this.cityId = city.cityId
-    this.cityName = city.cityName
     this.stopTimers()
-    this.mode = 'search'
-    this.headerTitle = '搜索'
-    this.searchResults = []
-    this.searchStations = []
-    this.searchTip = `已切换到 ${city.cityName}，点「搜索」查询`
+    router.back()
   },
 
 

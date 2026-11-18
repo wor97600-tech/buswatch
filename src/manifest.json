@@ -22,7 +22,7 @@
   "router": {
     "entry": "pages/Home",
     "pages": {
-      "pages/Home": { "component": "index" }, "pages/Search": { "component": "index" }, "pages/Station": { "component": "index" }, "pages/Line": { "component": "index" }
+      "pages/Home": { "component": "index" }, "pages/Search": { "component": "index" }, "pages/Station": { "component": "index" }, "pages/Line": { "component": "index" }, "pages/City": { "component": "index" }
     }
   },
   "distrubuteRules": {
