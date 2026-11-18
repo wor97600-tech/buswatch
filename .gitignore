@@ -1,0 +1,39 @@
+# ---- 依赖与构建产物：不提交 ----
+node_modules/
+build/
+dist/
+*.rpk
+*.vru
+*.vug
+*.snapshot
+
+# ---- 签名与证书：绝对不要提交 ----
+# sign/private.pem 是 RSA 私钥，签名的应用包可被冒名
+sign/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# ---- 编辑器 / 本地 IDE 配置 ----
+.ide/
+.vscode/
+.idea/
+.preview.json
+
+# ---- 本地环境变量与日志 ----
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+
+# 本地打包器路径（含本机绝对路径，不提交）
+.build.local.json
+
+# ---- 系统垃圾文件 ----
+.DS_Store
+Thumbs.db
+desktop.ini

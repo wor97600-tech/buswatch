@@ -1,0 +1,32 @@
+{
+  "package": "com.wlxxq.buswatch",
+  "name": "腕上公交",
+  "versionName": "1.0.0",
+  "versionCode": 36,
+  "minPlatformVersion": 1070,
+  "icon": "/assets/images/icon.png",
+  "appCategory": ["other"],
+  "deviceTypeList": ["watch-square"],
+  "permissions": ["system.permission.INTERNET"],
+  "config": {
+    "designWidth": 390
+  },
+  "display": {
+    "backgroundColor": "#000000"
+  },
+  "features": [
+    { "name": "blueos.network.fetch" },
+    { "name": "blueos.storage.storage" },
+    { "name": "blueos.app.appmanager.router" }
+  ],
+  "router": {
+    "entry": "pages/Home",
+    "pages": {
+      "pages/Home": { "component": "index" }
+    }
+  },
+  "distrubuteRules": {
+    "minAPILevel": 1
+  }
+}
+
