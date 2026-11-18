@@ -5,6 +5,33 @@ import store from './store'
 import net from './net'
 import core from './realtime-core'
 import chelaile from './chelaile'
+import router from '@blueos.app.appmanager.router'
+import session from './session'
+
+function currentPath() {
+  try {
+    const state = router.getState()
+    return state && state.path ? String(state.path) : ''
+  } catch (error) {
+    return ''
+  }
+}
+
+function modeFromPath(path) {
+  if (path.indexOf('/Search') >= 0) {
+    return 'search'
+  }
+  if (path.indexOf('/City') >= 0) {
+    return 'city'
+  }
+  if (path.indexOf('/Station') >= 0) {
+    return 'station'
+  }
+  if (path.indexOf('/Line') >= 0) {
+    return 'line'
+  }
+  return ''
+}
 
 function pad2(value) {
   return value < 10 ? `0${value}` : `${value}`
@@ -116,15 +143,89 @@ const pageLogic = {
     this.savedLines = []
     this.favStations = []
     this.lineContext = null
-    this.stationFrom = 'search'
-    this.lineFrom = ''
+    this.mode = modeFromPath(currentPath())
     const self = this
     store.getSelectedCity().then((city) => {
       self.cityId = String(city.cityId)
       self.cityName = city.cityName || config.cityName
       chelaile.setCityId(self.cityId)
-      self.loadHome(true)
+      self.initView()
     })
+  },
+
+  initView() {
+    if (this.mode === '') {
+      this.loadHome(true)
+      return
+    }
+    if (this.mode === 'search') {
+      this.headerTitle = '搜索'
+      this.keyword = ''
+      this.searchResults = []
+      this.searchStations = []
+      this.searchTip = ''
+      this.searching = false
+      return
+    }
+    if (this.mode === 'city') {
+      this.headerTitle = '选择城市'
+      this.cityQuery = ''
+      this.cityList = []
+      this.citySearching = false
+      this.cityHint = '正在加载热门城市…'
+      this.loadCityList(false)
+      return
+    }
+    if (this.mode === 'station') {
+      const station = session.takeStation()
+      if (!station) {
+        return
+      }
+      this.station = station
+      this.headerTitle = station.name || '公交站'
+      this.stationLines = []
+      this.stationTip = ''
+      this.stationUpdatedText = ''
+      this.loading = false
+      const self = this
+      store.isStationSaved(station).then((saved) => {
+        self.stationFav = Boolean(saved)
+      })
+      if (!station.physicalStId) {
+        this.resolveStation(station)
+      } else {
+        this.loadStationBoard(station, false)
+      }
+      return
+    }
+    if (this.mode === 'line') {
+      const payload = session.takeLine()
+      if (!payload || !payload.context) {
+        return
+      }
+      const context = payload.context
+      this.lineContext = payload.from === 'search' ? null : context
+      this.lineError = ''
+      this.lineName = context.shortName || context.lineName || '线路'
+      this.headerTitle = this.lineName
+      this.lineFirstLastText = '正在加载...'
+      this.lineLiveText = ''
+      this.lineLiveSub = ''
+      this.lineFollowed = false
+      this.stops = []
+      this.currentSeq = 0
+      this.loading = false
+      this._lineInit = context
+      const page = this
+      store.loadSaved().then((list) => {
+        page.savedLines = list || []
+        page.syncLineFollow()
+      })
+      if (this.lineContext) {
+        this.loadLineLive()
+      }
+      this.loadLine(context, false)
+    }
   },
 
   onShow() {
@@ -133,6 +234,26 @@ const pageLogic = {
     }
     if (!this._shown) {
       this._shown = true
+      return
+    }
+    if (this.mode === 'city') {
+      return
+    }
+    if (session.consumeCityChanged()) {
+      this.savedLines = this.savedLines || []
+      this.favStations = this.favStations || []
+      store.getSelectedCity().then((city) => {
+        this.cityId = String(city.cityId)
+        this.cityName = city.cityName || config.cityName
+        chelaile.setCityId(this.cityId)
+        if (this.mode === '') {
+          this.loadHome(true)
+        } else if (this.mode === 'search') {
+          this.searchResults = []
+          this.searchStations = []
+          this.searchTip = `已切换到 ${this.cityName}，点「搜索」查询`
+        }
+      })
       return
     }
     this.savedLines = this.savedLines || []
@@ -147,10 +268,7 @@ const pageLogic = {
   },
 
   onBackPress() {
-    if (this.mode) {
-      this.goBack()
-      return true
-    }
+    // 返回由系统页面栈处理
     return false
   },
 
@@ -177,50 +295,16 @@ const pageLogic = {
   goBack() {
     this.stopTimers()
     this.loading = false
-    if (this.mode === 'city') {
-      this.mode = 'search'
-      this.headerTitle = '搜索'
-      return
-    }
     if (this.mode === 'poi') {
       this.mode = 'search'
       return
     }
-    if (this.mode === 'line') {
-      if (this.lineFrom === 'station') {
-        this.mode = 'station'
-      } else if (this.lineFrom === 'search') {
-        this.mode = 'search'
-      } else {
-        this.mode = ''
-        this.loadHome(false)
-      }
-      return
-    }
-    if (this.mode === 'station') {
-      if (this.stationFrom === 'poi') {
-        this.mode = 'poi'
-      } else if (this.stationFrom === 'home') {
-        this.mode = ''
-        this.loadHome(false)
-      } else {
-        this.mode = 'search'
-      }
-      return
-    }
-    this.mode = ''
-    this.loadHome(false)
+    router.back()
   },
 
   openSearch() {
     this.stopTimers()
-    this.mode = 'search'
-    this.headerTitle = '搜索'
-    this.keyword = ''
-    this.searchResults = []
-    this.searchStations = []
-    this.searchTip = ''
-    this.searching = false
+    router.push({ uri: '/pages/Search' })
   },
 
   onKeywordChange(event) {
@@ -262,13 +346,7 @@ const pageLogic = {
 
   openCityPicker() {
     this.stopTimers()
-    this.mode = 'city'
-    this.headerTitle = '选择城市'
-    this.cityQuery = ''
-    this.cityList = []
-    this.citySearching = false
-    this.cityHint = '正在加载热门城市…'
-    this.loadCityList(false)
+    router.push({ uri: '/pages/City' })
   },
 
   loadCityList(force) {
@@ -432,21 +510,11 @@ const pageLogic = {
       cityName: item.cityName,
       pinyin: item.pinyin || ''
     }
-    this.cityId = city.cityId
-    this.cityName = city.cityName
     chelaile.setCityId(city.cityId)
     store.setSelectedCity(city)
+    session.markCityChanged()
     this.stopTimers()
-    this._searchToken = (this._searchToken || 0) + 1
-    this.searching = false
-    this.station = null
-    this.lineContext = null
-    this.searchResults = []
-    this.searchStations = []
-    this.searchTip = `已切换到 ${city.cityName}，点「搜索」查询`
-    this.mode = 'search'
-    this.headerTitle = '搜索'
-    this.loadHome(false)
+    router.back()
   },
 
   onSwiperChange(event) {
@@ -798,29 +866,11 @@ const pageLogic = {
     if (!station) {
       return
     }
-    this.stationFrom = from || 'search'
     const current = Object.assign({}, station, {
       cityId: station.cityId || this.cityId
     })
-    this.station = current
-    this.mode = 'station'
-    this.headerTitle = station.name || '公交站'
-    this.stationLines = []
-    this.stationTip = ''
-    this.stationUpdatedText = ''
-    this.loading = false
-    const self = this
-
-    store.isStationSaved(current).then((saved) => {
-      self.stationFav = Boolean(saved)
-    })
-
-    if (!current.physicalStId) {
-      this.resolveStation(current)
-      return
-    }
-
-    this.loadStationBoard(current, false)
+    session.setStation(current)
+    router.push({ uri: '/pages/Station' })
   },
 
   resolveStation(station) {
@@ -1086,29 +1136,11 @@ const pageLogic = {
 
   openLine(context, from) {
     this.stopTimers()
-    this.mode = 'line'
-    this.lineFrom = from || ''
-    this.lineContext = from === 'search' ? null : context
-    this.lineError = ''
-    this.lineName = context.shortName || context.lineName || '线路'
-    this.headerTitle = this.lineName
-    this.lineFirstLastText = '正在加载...'
-    this.lineLiveText = ''
-    this.lineLiveSub = ''
-    this.lineFollowed = false
-    this.stops = []
-    this.currentSeq = 0
-    this.loading = false
-    this._lineInit = context
-    const self = this
-    store.loadSaved().then((list) => {
-      self.savedLines = list || []
-      self.syncLineFollow()
-    })
-    if (this.lineContext) {
-      this.loadLineLive()
+    if (!context) {
+      return
     }
-    this.loadLine(context, false)
+    session.setLine({ context: context, from: from || '' })
+    router.push({ uri: '/pages/Line' })
   },
 
   loadLine(context, force) {
