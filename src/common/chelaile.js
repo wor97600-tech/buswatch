@@ -240,10 +240,12 @@ function fetchHotCities() {
 function fetchCities() {
   return request('/v1/cities', { hot_only: 0 }, { timeout: SLOW_TIMEOUT, retry: SLOW_RETRY }).then((data) => {
     const cities = validCities(data)
-    return store.setCitiesCache(cities).then(() => {
+    const done = () => {
       citiesMemory = { ts: Date.now(), cities: cities }
       return { cities: cities, cachedAt: citiesMemory.ts, stale: false }
-    })
+    }
+    // 缓存写入失败（例如超出存储容量）不影响本次使用
+    return store.setCitiesCache(cities).then(done, done)
   })
 }
 

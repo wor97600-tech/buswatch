@@ -9,6 +9,7 @@ const BOARD_KEY = 'bus_watch_board_cache_v1'
 const STATION_KEY = 'bus_watch_stations_v1'
 const CITY_KEY = 'bus_watch_city_v1'
 const CITIES_KEY = 'bus_watch_cities_v1'
+const CITIES_META_KEY = 'bus_watch_cities_meta_v1'
 const LIMITS = {
   search: 20,
   stop: 40,
@@ -32,24 +33,32 @@ function isObject(value) {
 
 function read(key, fallback) {
   return new Promise((resolve) => {
-    storage.get({
-      key,
-      success: (data) => {
-        resolve(data === undefined || data === null ? fallback : data)
-      },
-      fail: () => resolve(fallback)
-    })
+    try {
+      storage.get({
+        key,
+        success: (data) => {
+          resolve(data === undefined || data === null ? fallback : data)
+        },
+        fail: () => resolve(fallback)
+      })
+    } catch (error) {
+      resolve(fallback)
+    }
   })
 }
 
 function write(key, value) {
   return new Promise((resolve) => {
-    storage.set({
-      key,
-      value,
-      success: () => resolve(true),
-      fail: () => resolve(false)
-    })
+    try {
+      storage.set({
+        key,
+        value,
+        success: () => resolve(true),
+        fail: () => resolve(false)
+      })
+    } catch (error) {
+      resolve(false)
+    }
   })
 }
 
@@ -301,18 +310,48 @@ export function setSelectedCity(city) {
   return write(CITY_KEY, record).then(() => record)
 }
 
+// 城市列表约 69KB，整块写入可能超出单键容量限制，按块存储
+const CITIES_CHUNK_SIZE = 40
+
 export function getCitiesCache() {
-  return read(CITIES_KEY, null).then((data) => {
-    if (data && Array.isArray(data.cities)) {
-      return data
+  return read(CITIES_META_KEY, null).then((meta) => {
+    if (!meta || !meta.chunks) {
+      return null
     }
-    return null
+    const keys = []
+    for (let i = 0; i < meta.chunks; i += 1) {
+      keys.push(`${CITIES_KEY}_${i}`)
+    }
+    return Promise.all(keys.map((key) => read(key, []))).then((parts) => {
+      const cities = []
+      parts.forEach((part) => {
+        if (Array.isArray(part)) {
+          part.forEach((city) => cities.push(city))
+        }
+      })
+      if (cities.length === 0) {
+        return null
+      }
+      return { ts: meta.ts || 0, cities: cities }
+    })
   })
 }
 
 export function setCitiesCache(cities) {
-  const record = { ts: Date.now(), cities: Array.isArray(cities) ? cities : [] }
-  return write(CITIES_KEY, record).then(() => record)
+  const list = Array.isArray(cities) ? cities : []
+  const chunks = []
+  for (let i = 0; i < list.length; i += CITIES_CHUNK_SIZE) {
+    chunks.push(list.slice(i, i + CITIES_CHUNK_SIZE))
+  }
+  const ts = Date.now()
+  const tasks = chunks.map((chunk, index) => write(`${CITIES_KEY}_${index}`, chunk))
+  return Promise.all(tasks).then((results) => {
+    const allOk = results.every((item) => item === true)
+    return write(CITIES_META_KEY, { ts: ts, chunks: chunks.length, ok: allOk }).then(() => ({
+      ts: ts,
+      cities: list
+    }))
+  })
 }
 
 export default {
