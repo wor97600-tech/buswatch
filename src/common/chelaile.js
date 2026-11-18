@@ -50,19 +50,7 @@ function request(path, params, overrides) {
     }
     return result.data
   }
-  return net.requestApi(HOST, path, params, options).then(parse, (error) => {
-    // 开启了 gzip 但内容解析不出来，说明端上不支持自动解压，关掉后重试一次
-    const canFallback =
-      error &&
-      (error.type === 'json' || error.type === 'empty') &&
-      typeof net.isGzipEnabled === 'function' &&
-      net.isGzipEnabled()
-    if (!canFallback) {
-      throw error
-    }
-    net.setGzipEnabled(false)
-    return net.requestApi(HOST, path, params, options).then(parse)
-  })
+  return net.requestApi(HOST, path, params, options).then(parse)
 }
 
 function isEnabled() {

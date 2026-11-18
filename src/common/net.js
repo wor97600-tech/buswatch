@@ -6,18 +6,6 @@ const DEFAULT_TIMEOUT = NET.timeout || 12000
 const schemeMemory = {}
 const inflight = {}
 
-// 服务端支持 gzip（69KB → 7KB），但手表端网络库不支持自动解压，
-// 因此默认关闭；如需启用可把 config.net.gzip 设为 true。
-let gzipEnabled = NET.gzip === true
-
-export function setGzipEnabled(value) {
-  gzipEnabled = Boolean(value)
-}
-
-export function isGzipEnabled() {
-  return gzipEnabled
-}
-
 function makeError(message, type, status, detail) {
   const error = new Error(message)
   error.type = type || 'unknown'
@@ -125,14 +113,11 @@ function rawRequest(url, options) {
       return
     }
 
-    const baseHeader = opts.headers || {}
     const requestOptions = {
       url: url,
       method: method,
       responseType: 'text',
-      header: gzipEnabled
-        ? Object.assign({ 'Accept-Encoding': 'gzip' }, baseHeader)
-        : baseHeader,
+      header: opts.headers || {},
       success: (response) => {
         const hasStatus = Boolean(
           response && response.code !== undefined && response.code !== null && response.code !== ''
