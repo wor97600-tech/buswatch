@@ -24,6 +24,11 @@
     </div>
 
     <text class="tip" if="{{ mode === 'city' && cityHint }}">{{ cityHint }}</text>
+    <div class="foot2" if="{{ mode === 'city' }}">
+      <div class="wide-btn" onclick="downloadCityCache">
+        <text class="wide-text">{{ cityDownloading ? '正在下载…' : (cityCacheReady ? '重新下载城市缓存' : '下载城市缓存') }}</text>
+      </div>
+    </div>
     <text class="retry" if="{{ mode === 'city' && cityError }}" onclick="loadCityList(true)">{{ cityError }} · 点此重试</text>
 
     <list class="slist city-list" if="{{ mode === 'city' && cityList.length > 0 }}">

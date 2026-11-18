@@ -163,6 +163,8 @@ const pageLogic = {
     cityError: '',
     cityList: [],
     citySearching: false,
+    cityDownloading: false,
+    cityCacheReady: false,
     swipeIndex: 1
   },
 
@@ -204,8 +206,18 @@ const pageLogic = {
       this.cityQuery = ''
       this.cityList = []
       this.citySearching = false
-      this.cityHint = '正在加载热门城市…'
-      this.loadCityList(false)
+      this.cityDownloading = false
+      this.cityCacheReady = false
+      this.cityHint = '点「下载城市缓存」获取全国城市'
+      const self = this
+      store.getCitiesCache().then((entry) => {
+        if (entry && Array.isArray(entry.cities) && entry.cities.length > 0) {
+          self.cityAll = entry.cities
+          self.cityCacheReady = true
+          self.cityHint = `城市缓存已就绪（${entry.cities.length} 个城市）`
+          self.applyCityFilter()
+        }
+      })
       return
     }
     if (this.mode === 'station') {
@@ -445,6 +457,35 @@ const pageLogic = {
     }
   },
 
+  downloadCityCache() {
+    if (this.cityDownloading) {
+      return
+    }
+    const self = this
+    this.cityDownloading = true
+    this.cityError = ''
+    this.cityHint = '正在下载城市缓存…'
+    chelaile
+      .getCities({ hotOnly: false, force: true })
+      .then((result) => {
+        self.cityDownloading = false
+        self.cityAll = result.cities || []
+        self._cityAllFallback = false
+        self.cityCacheReady = self.cityAll.length > 0
+        if (self.cityCacheReady) {
+          self.cityHint = `城市缓存已就绪（${self.cityAll.length} 个城市）`
+          self.applyCityFilter()
+        } else {
+          self.cityHint = '城市缓存为空'
+        }
+      })
+      .catch((error) => {
+        self.cityDownloading = false
+        self.cityHint = ''
+        self.cityError = `城市缓存下载失败：${net.describeError(error)}`
+      })
+  },
+
   searchCities() {
     if (this.citySearching) {
       return
@@ -515,7 +556,7 @@ const pageLogic = {
     if (!query) {
       const hot = (this.cityHot || []).slice(0, 12)
       this.cityList = hot.map(build)
-      this.cityHint = hot.length ? '热门城市 · 输入城市名或拼音后点查找' : '城市列表为空，请点重试'
+      this.cityHint = hot.length ? '热门城市 · 输入城市名或拼音后点查找' : '输入城市名或拼音后点「查找」'
       return
     }
     const all = this.cityAll || []
