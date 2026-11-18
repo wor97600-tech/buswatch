@@ -455,18 +455,29 @@ const pageLogic = {
     }
     if (!String(this.cityQuery || '').trim()) {
       this.applyCityFilter()
+      this.cityHint = '请先输入城市名或拼音'
       return
     }
     this.cityError = ''
     this.citySearching = true
     this.cityHint = '查找中…'
     const self = this
-    const finish = () => {
+    const startedAt = Date.now()
+    const apply = () => {
       self.citySearching = false
       self.applyCityFilter()
     }
+    // 全量列表有本地缓存时几乎瞬时返回，保证「查找中」至少可见一段时间
+    const finish = () => {
+      const remain = 400 - (Date.now() - startedAt)
+      if (remain > 0) {
+        setTimeout(apply, remain)
+      } else {
+        apply()
+      }
+    }
     if (self.cityAll && self.cityAll.length > 0 && !self._cityAllFallback) {
-      setTimeout(finish, 120)
+      finish()
       return
     }
     chelaile
