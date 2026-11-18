@@ -6,6 +6,9 @@ import core from './realtime-core'
 const HOST = config.chelaile.host
 const TIMEOUT = config.chelaile.timeout
 const RETRY = config.chelaile.retry
+const SLOW_TIMEOUT = config.chelaile.slowTimeout || 20000
+const SLOW_RETRY = config.chelaile.slowRetry || 2
+const SEARCH_TIMEOUT = config.chelaile.searchTimeout || 12000
 const TTL = config.cache
 const CITIES_TTL = 7 * 24 * 60 * 60 * 1000
 
@@ -31,11 +34,12 @@ const HEADERS = {
   Accept: 'application/json'
 }
 
-function request(path, params) {
+function request(path, params, overrides) {
+  const opts = overrides || {}
   return net
     .requestApi(HOST, path, params, {
-      timeout: TIMEOUT,
-      retry: RETRY,
+      timeout: opts.timeout || TIMEOUT,
+      retry: opts.retry === undefined ? RETRY : opts.retry,
       headers: HEADERS
     })
     .then((result) => {
@@ -171,13 +175,13 @@ export function searchAll(keyword, options) {
     const fresh = Boolean(entry && entry.ts && now - entry.ts < TTL.search)
     if (!opts.force && entry && entry.data) {
       if (!fresh) {
-        request('/v1/search', { city_id: cityId, keyword: text })
+        request('/v1/search', { city_id: cityId, keyword: text }, { timeout: SEARCH_TIMEOUT })
           .then((data) => store.setSearchCache(cacheKey, normalizeSearch(data)))
           .catch(() => null)
       }
       return withSearchMeta(entry.data, entry.ts, !fresh)
     }
-    return request('/v1/search', { city_id: cityId, keyword: text })
+    return request('/v1/search', { city_id: cityId, keyword: text }, { timeout: SEARCH_TIMEOUT })
       .then((data) => {
         const parsed = normalizeSearch(data)
         const ts = Date.now()
@@ -233,7 +237,7 @@ function fetchHotCities() {
 }
 
 function fetchCities() {
-  return request('/v1/cities', { hot_only: 0 }).then((data) => {
+  return request('/v1/cities', { hot_only: 0 }, { timeout: SLOW_TIMEOUT, retry: SLOW_RETRY }).then((data) => {
     const cities = validCities(data)
     return store.setCitiesCache(cities).then(() => {
       citiesMemory = { ts: Date.now(), cities: cities }
@@ -377,7 +381,7 @@ export function getStopBoard(station, options) {
       const age = now - (liveTs || staticTs)
       return boardResult(entry.data, liveTs || staticTs, age >= TTL.live)
     }
-    return request('/v1/stops/detail', params)
+    return request('/v1/stops/detail', params, { timeout: SLOW_TIMEOUT, retry: SLOW_RETRY })
       .then((data) => {
         if (!Array.isArray(data.stations) || data.stations.length === 0) {
           const error = new Error('没有查到该站线路')
@@ -477,11 +481,15 @@ export function getLineDetail(lineId, direction, options) {
       const age = now - (liveTs || staticTs)
       return lineResult(entry.data, liveTs || staticTs, age >= TTL.live)
     }
-    return request('/v1/lines/detail', {
-      city_id: cityId,
-      line_id: id,
-      direction: queryDirection
-    })
+    return request(
+      '/v1/lines/detail',
+      {
+        city_id: cityId,
+        line_id: id,
+        direction: queryDirection
+      },
+      { timeout: SLOW_TIMEOUT, retry: SLOW_RETRY }
+    )
       .then((data) => {
         const lineInfo = data.line || {}
         if (data.empty === true || (!lineInfo.lineId && !lineInfo.name)) {

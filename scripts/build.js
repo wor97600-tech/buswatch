@@ -4,7 +4,7 @@ const { spawnSync } = require('child_process')
 
 const root = path.resolve(__dirname, '..')
 const manifestPath = path.join(root, 'src/manifest.json')
-const styleEntryPath = path.join(root, 'src/pages/Home/style.css')
+const styleEntryPath = path.join(root, 'src/common/style.css')
 
 const TARGETS = [
   {

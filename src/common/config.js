@@ -6,7 +6,10 @@ const config = {
     enabled: true,
     host: 'ts-api.tundrey.com',
     timeout: 9000,
-    retry: 1
+    retry: 1,
+    slowTimeout: 20000,
+    slowRetry: 2,
+    searchTimeout: 12000
   },
   net: {
     allowHttps: false,

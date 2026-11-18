@@ -21,10 +21,17 @@
 .back-slide {
   width: 100%;
   height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+.back-slide-hint {
+  font-size: 28px;
+  color: #5a5a5a;
 }
 .header {
-  height: 56px;
-  padding: 8px 14px 0 14px;
+  height: 54px;
+  margin-top: 44px;
+  padding: 0 88px;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
@@ -35,14 +42,14 @@
   justify-content: center;
 }
 .title {
-  font-size: 27px;
+  font-size: 28px;
   color: #ffffff;
   font-weight: bold;
 }
 .back-hit {
-  width: 56px;
-  height: 48px;
-  margin-left: -10px;
+  width: 88px;
+  height: 54px;
+  margin-left: -30px;
   align-items: center;
   justify-content: center;
 }
@@ -51,7 +58,7 @@
 }
 .title2 {
   flex: 1;
-  font-size: 21px;
+  font-size: 22px;
   color: #ffffff;
   text-align: center;
 }
@@ -66,19 +73,19 @@
   text-align: center;
 }
 .refresh-btn {
-  min-width: 76px;
-  height: 40px;
-  padding: 0 18px;
-  border-radius: 20px;
+  min-width: 72px;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 19px;
   background-color: #16261e;
   flex-direction: row;
   align-items: center;
   justify-content: center;
 }
 .refresh-btn.small {
-  min-width: 68px;
-  height: 36px;
-  border-radius: 18px;
+  min-width: 66px;
+  height: 34px;
+  border-radius: 17px;
 }
 .refresh-btn.busy {
   background-color: #1d2f26;
@@ -93,7 +100,7 @@
 }
 .empty {
   flex: 1;
-  padding: 0 24px;
+  padding: 0 84px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -121,8 +128,8 @@
   font-weight: bold;
 }
 .list {
-  height: 286px;
-  padding: 0 12px;
+  height: 244px;
+  padding: 0 60px;
 }
 .home-cell {
   width: 100%;
@@ -227,11 +234,11 @@
   color: #7a7a7a;
 }
 .search-list {
-  height: 250px;
+  height: 188px;
 }
 .city-bar {
-  margin: 6px 14px 0 14px;
-  height: 34px;
+  margin: 4px 88px 0 88px;
+  height: 32px;
   padding: 0 12px;
   border-radius: 10px;
   background-color: #14251d;
@@ -252,8 +259,9 @@
   font-weight: bold;
 }
 .footer {
-  height: 60px;
-  padding: 4px 14px 10px 14px;
+  height: 64px;
+  margin-bottom: 56px;
+  padding: 0 88px;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
@@ -280,12 +288,12 @@
   font-weight: bold;
 }
 .retry {
-  padding: 4px 16px;
+  padding: 4px 96px;
   font-size: 13px;
   color: #35d07f;
 }
 .city-list {
-  height: 248px;
+  height: 190px;
 }
 .city-item {
   height: 54px;
@@ -313,7 +321,7 @@
   color: #7a8f83;
 }
 .row {
-  padding: 8px 14px;
+  padding: 6px 88px 0 88px;
   flex-direction: row;
   align-items: center;
 }
@@ -344,18 +352,18 @@
   font-weight: bold;
 }
 .tip {
-  padding: 2px 16px;
+  padding: 3px 96px;
   font-size: 13px;
   color: #8a8a8a;
 }
 .src {
-  padding: 2px 14px;
+  padding: 2px 60px;
   font-size: 12px;
   color: #5f8a73;
 }
 .slist {
-  height: 300px;
-  padding: 0 12px;
+  height: 190px;
+  padding: 0 60px;
 }
 .item {
   height: 60px;
@@ -397,11 +405,11 @@
   color: #8a8a8a;
 }
 .station-list {
-  height: 266px;
+  height: 176px;
 }
 .sline {
-  height: 68px;
-  margin-bottom: 8px;
+  height: 62px;
+  margin-bottom: 6px;
   padding: 0 6px 0 14px;
   border-radius: 14px;
   background-color: #161616;
@@ -463,8 +471,9 @@
   color: #35d07f;
 }
 .foot2 {
-  height: 60px;
-  padding: 4px 14px 10px 14px;
+  height: 62px;
+  margin-bottom: 28px;
+  padding: 0 88px;
 }
 .wide-btn {
   height: 44px;
@@ -485,7 +494,7 @@
   color: #9fc0ad;
 }
 .poi-box {
-  margin: 6px 14px 0 14px;
+  margin: 6px 64px 0 64px;
   padding: 10px 12px;
   border-radius: 12px;
   background-color: #14251d;
@@ -512,7 +521,7 @@
   color: #5f7a6a;
 }
 .poi-list {
-  height: 150px;
+  height: 110px;
   margin-top: 2px;
 }
 .error {
@@ -522,7 +531,7 @@
   text-align: center;
 }
 .summary {
-  padding: 8px 14px;
+  padding: 8px 64px;
   flex-direction: column;
 }
 .full-name {
@@ -541,7 +550,7 @@
   color: #35d07f;
 }
 .live {
-  margin: 4px 14px 0 14px;
+  margin: 4px 64px 0 64px;
   padding: 8px 12px;
   border-radius: 12px;
   background-color: #14251d;
@@ -557,12 +566,12 @@
   color: #7a9a8a;
 }
 .stops {
-  height: 160px;
+  height: 104px;
   margin-top: 4px;
-  padding: 0 12px;
+  padding: 0 60px;
 }
 .stop {
-  height: 38px;
+  height: 34px;
   padding: 0 10px;
   flex-direction: row;
   align-items: center;
