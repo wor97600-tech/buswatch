@@ -17,6 +17,34 @@ function currentPath() {
   }
 }
 
+function readPayload(value) {
+  if (!value) {
+    return null
+  }
+  if (typeof value === 'object') {
+    return value
+  }
+  try {
+    return JSON.parse(String(value))
+  } catch (error) {
+    return null
+  }
+}
+
+function inferMode(payload) {
+  const data = readPayload(payload)
+  if (!data) {
+    return ''
+  }
+  if (data.context) {
+    return 'line'
+  }
+  if (data.physicalStId || data.stationId || data.name) {
+    return 'station'
+  }
+  return ''
+}
+
 function modeFromPath(path) {
   if (path.indexOf('/Search') >= 0) {
     return 'search'
@@ -143,7 +171,11 @@ const pageLogic = {
     this.savedLines = []
     this.favStations = []
     this.lineContext = null
-    this.mode = modeFromPath(currentPath())
+    this.mode = this.view || inferMode(this.payload) || modeFromPath(currentPath())
+    if (!this.mode) {
+      // 诊断：未能识别页面时把路径显示在标题，便于定位
+      this.headerTitle = String(currentPath() || 'no-path')
+    }
     const self = this
     store.getSelectedCity().then((city) => {
       self.cityId = String(city.cityId)
@@ -177,8 +209,9 @@ const pageLogic = {
       return
     }
     if (this.mode === 'station') {
-      const station = session.takeStation()
+      const station = readPayload(this.payload)
       if (!station) {
+        this.stationTip = '缺少站点信息'
         return
       }
       this.station = station
@@ -199,8 +232,9 @@ const pageLogic = {
       return
     }
     if (this.mode === 'line') {
-      const payload = session.takeLine()
+      const payload = readPayload(this.payload)
       if (!payload || !payload.context) {
+        this.lineError = '缺少线路信息'
         return
       }
       const context = payload.context
@@ -239,28 +273,31 @@ const pageLogic = {
     if (this.mode === 'city') {
       return
     }
-    if (session.consumeCityChanged()) {
-      this.savedLines = this.savedLines || []
-      this.favStations = this.favStations || []
-      store.getSelectedCity().then((city) => {
-        this.cityId = String(city.cityId)
-        this.cityName = city.cityName || config.cityName
-        chelaile.setCityId(this.cityId)
-        if (this.mode === '') {
-          this.loadHome(true)
-        } else if (this.mode === 'search') {
-          this.searchResults = []
-          this.searchStations = []
-          this.searchTip = `已切换到 ${this.cityName}，点「搜索」查询`
+    const self = this
+    store.getSelectedCity().then((city) => {
+      const nextId = String(city.cityId)
+      const changed = nextId !== String(self.cityId || '')
+      if (changed) {
+        self.cityId = nextId
+        self.cityName = city.cityName || config.cityName
+        chelaile.setCityId(nextId)
+        if (self.mode === '') {
+          self.loadHome(true)
+          return
         }
-      })
-      return
-    }
-    this.savedLines = this.savedLines || []
-    this.favStations = this.favStations || []
-    if (this.mode === '' && !this.loading) {
-      this.loadHome(true)
-    }
+        if (self.mode === 'search') {
+          self.searchResults = []
+          self.searchStations = []
+          self.searchTip = `已切换到 ${self.cityName}，点「搜索」查询`
+          return
+        }
+      }
+      self.savedLines = self.savedLines || []
+      self.favStations = self.favStations || []
+      if (self.mode === '' && !self.loading) {
+        self.loadHome(true)
+      }
+    })
   },
 
   onDestroy() {
@@ -304,7 +341,7 @@ const pageLogic = {
 
   openSearch() {
     this.stopTimers()
-    router.push({ uri: '/pages/Search' })
+    router.push({ uri: '/pages/Search', params: { view: 'search' } })
   },
 
   onKeywordChange(event) {
@@ -346,7 +383,7 @@ const pageLogic = {
 
   openCityPicker() {
     this.stopTimers()
-    router.push({ uri: '/pages/City' })
+    router.push({ uri: '/pages/City', params: { view: 'city' } })
   },
 
   loadCityList(force) {
@@ -512,7 +549,6 @@ const pageLogic = {
     }
     chelaile.setCityId(city.cityId)
     store.setSelectedCity(city)
-    session.markCityChanged()
     this.stopTimers()
     router.back()
   },
@@ -869,8 +905,7 @@ const pageLogic = {
     const current = Object.assign({}, station, {
       cityId: station.cityId || this.cityId
     })
-    session.setStation(current)
-    router.push({ uri: '/pages/Station' })
+    router.push({ uri: '/pages/Station', params: { view: 'station', payload: JSON.stringify(current) } })
   },
 
   resolveStation(station) {
@@ -1139,8 +1174,10 @@ const pageLogic = {
     if (!context) {
       return
     }
-    session.setLine({ context: context, from: from || '' })
-    router.push({ uri: '/pages/Line' })
+    router.push({
+      uri: '/pages/Line',
+      params: { view: 'line', payload: JSON.stringify({ context: context, from: from || '' }) }
+    })
   },
 
   loadLine(context, force) {
