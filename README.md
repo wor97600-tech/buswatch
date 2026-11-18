@@ -5,6 +5,7 @@
 # 腕上公交
 
 [![Release](https://img.shields.io/github/v/release/wor97600-tech/buswatch)](https://github.com/wor97600-tech/buswatch/releases)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 蓝河 OS（BlueOS）手表公交到站应用 · 方屏 / 圆屏
 
@@ -111,3 +112,7 @@ chelaile: {
 - 实时到站覆盖城市以车来了接口为准，海口已实测覆盖
 - 接口不可用时展示本地缓存，不编造到站时间
 - 站名输入依赖手表系统输入法或语音输入
+
+## 许可证
+
+[MIT](LICENSE)
