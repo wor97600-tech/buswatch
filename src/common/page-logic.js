@@ -165,7 +165,7 @@ const pageLogic = {
     citySearching: false,
     cityDownloading: false,
     cityCacheReady: false,
-    swipeIndex: 1
+
   },
 
   onReady() {
@@ -588,101 +588,6 @@ const pageLogic = {
     router.back()
   },
 
-  onSwiperChange(event) {
-    const index = this.readSwiperIndex(event)
-    if (index === 0) {
-      this.handleSwipeBack()
-      return
-    }
-    if (index === 1) {
-      this.swipeIndex = 1
-    }
-  },
-
-  onSwiperScroll(event) {
-    const state = this.readSwiperScrollState(event)
-    if (!state || state.index === undefined) {
-      return
-    }
-    if (state.index === 0) {
-      this.handleSwipeBack()
-    }
-  },
-
-  readSwiperScrollState(event) {
-    if (!event || typeof event !== 'object') {
-      return null
-    }
-    const source = event.detail || event
-    const index = source.index !== undefined ? Number(source.index) : undefined
-    const offsetPct =
-      source.offsetPct !== undefined
-        ? Number(source.offsetPct)
-        : source.offset !== undefined
-          ? Number(source.offset)
-          : undefined
-    return {
-      index: isNaN(index) ? undefined : index,
-      offsetPct: isNaN(offsetPct) ? undefined : offsetPct
-    }
-  },
-
-  readSwiperIndex(event) {
-    let raw
-    if (typeof event === 'number' || typeof event === 'string') {
-      raw = event
-    } else if (event) {
-      raw =
-        event.index !== undefined
-          ? event.index
-          : event.value !== undefined
-            ? event.value
-            : event.detail && event.detail.index !== undefined
-              ? event.detail.index
-              : undefined
-    }
-    if (raw === undefined || raw === null || raw === '') {
-      return undefined
-    }
-    const index = Number(raw)
-    return isNaN(index) ? undefined : index
-  },
-
-  onSwiperScrollTop() {
-    if (this.mode !== '') {
-      this.handleSwipeBack()
-    }
-  },
-
-  handleSwipeBack() {
-    const now = Date.now()
-    if (this._swipeBackAt && now - this._swipeBackAt < 300) {
-      return
-    }
-    this._swipeBackAt = now
-    this.backToMain()
-    if (this.mode !== '') {
-      this.goBack()
-    }
-  },
-
-  backToMain() {
-    this.swipeIndex = 1
-    if (typeof this.$element === 'function') {
-      try {
-        const swiper = this.$element('appSwiper')
-        if (swiper && typeof swiper.swipeTo === 'function') {
-          try {
-            swiper.swipeTo({ index: 1 })
-          } catch (error) {
-            swiper.swipeTo(1)
-          }
-        }
-      } catch (error) {
-        // 仅依赖 index 绑定
-      }
-    }
-  },
 
   localMatches(keyword) {
     const kw = core.normalizeStop(keyword)
