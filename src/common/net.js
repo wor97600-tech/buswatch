@@ -6,6 +6,18 @@ const DEFAULT_TIMEOUT = NET.timeout || 12000
 const schemeMemory = {}
 const inflight = {}
 
+// 服务端支持 gzip，可把 69KB 的城市列表压到约 7KB。
+// 若手表端不支持自动解压导致解析失败，会自动关闭并重试。
+let gzipEnabled = NET.gzip !== false
+
+export function setGzipEnabled(value) {
+  gzipEnabled = Boolean(value)
+}
+
+export function isGzipEnabled() {
+  return gzipEnabled
+}
+
 function makeError(message, type, status, detail) {
   const error = new Error(message)
   error.type = type || 'unknown'
@@ -113,11 +125,14 @@ function rawRequest(url, options) {
       return
     }
 
+    const baseHeader = opts.headers || {}
     const requestOptions = {
       url: url,
       method: method,
       responseType: 'text',
-      header: opts.headers || {},
+      header: gzipEnabled
+        ? Object.assign({ 'Accept-Encoding': 'gzip' }, baseHeader)
+        : baseHeader,
       success: (response) => {
         const hasStatus = Boolean(
           response && response.code !== undefined && response.code !== null && response.code !== ''

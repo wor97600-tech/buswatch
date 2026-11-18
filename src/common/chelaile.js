@@ -37,20 +37,32 @@ const HEADERS = {
 
 function request(path, params, overrides) {
   const opts = overrides || {}
-  return net
-    .requestApi(HOST, path, params, {
-      timeout: opts.timeout || TIMEOUT,
-      retry: opts.retry === undefined ? RETRY : opts.retry,
-      headers: HEADERS
-    })
-    .then((result) => {
-      if (!result || !result.data || typeof result.data !== 'object') {
-        const error = new Error('返回内容无法解析')
-        error.type = 'json'
-        throw error
-      }
-      return result.data
-    })
+  const options = {
+    timeout: opts.timeout || TIMEOUT,
+    retry: opts.retry === undefined ? RETRY : opts.retry,
+    headers: HEADERS
+  }
+  const parse = (result) => {
+    if (!result || !result.data || typeof result.data !== 'object') {
+      const error = new Error('返回内容无法解析')
+      error.type = 'json'
+      throw error
+    }
+    return result.data
+  }
+  return net.requestApi(HOST, path, params, options).then(parse, (error) => {
+    // 开启了 gzip 但内容解析不出来，说明端上不支持自动解压，关掉后重试一次
+    const canFallback =
+      error &&
+      (error.type === 'json' || error.type === 'empty') &&
+      typeof net.isGzipEnabled === 'function' &&
+      net.isGzipEnabled()
+    if (!canFallback) {
+      throw error
+    }
+    net.setGzipEnabled(false)
+    return net.requestApi(HOST, path, params, options).then(parse)
+  })
 }
 
 function isEnabled() {
