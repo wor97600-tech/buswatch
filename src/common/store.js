@@ -310,8 +310,41 @@ export function setSelectedCity(city) {
   return write(CITY_KEY, record).then(() => record)
 }
 
-// 城市列表约 69KB，整块写入可能超出单键容量限制，按块存储
-const CITIES_CHUNK_SIZE = 40
+// 城市列表约 69KB，整块写入可能超出单键容量限制，按块存储；
+// 同时用数组压缩字段名，把写入体积再降一半左右
+const CITIES_CHUNK_SIZE = 80
+
+function compactCity(city) {
+  const item = city || {}
+  return [String(item.cityId || ''), item.cityName || '', item.pinyin || '', item.hot ? 1 : 0]
+}
+
+function expandCity(row) {
+  if (Array.isArray(row)) {
+    return {
+      cityId: String(row[0] || ''),
+      cityName: row[1] || '',
+      pinyin: row[2] || '',
+      hot: row[3] === 1
+    }
+  }
+  const item = row || {}
+  return {
+    cityId: String(item.cityId || ''),
+    cityName: item.cityName || '',
+    pinyin: item.pinyin || '',
+    hot: item.hot === true
+  }
+}
+
+function writeSequential(items, index, allOk) {
+  if (index >= items.length) {
+    return Promise.resolve(allOk)
+  }
+  return write(`${CITIES_KEY}_${index}`, items[index]).then((ok) =>
+    writeSequential(items, index + 1, allOk && ok === true)
+  )
+}
 
 export function getCitiesCache() {
   return read(CITIES_META_KEY, null).then((meta) => {
@@ -326,7 +359,12 @@ export function getCitiesCache() {
       const cities = []
       parts.forEach((part) => {
         if (Array.isArray(part)) {
-          part.forEach((city) => cities.push(city))
+          part.forEach((row) => {
+            const city = expandCity(row)
+            if (city.cityId && city.cityName) {
+              cities.push(city)
+            }
+          })
         }
       })
       if (cities.length === 0) {
@@ -339,19 +377,18 @@ export function getCitiesCache() {
 
 export function setCitiesCache(cities) {
   const list = Array.isArray(cities) ? cities : []
+  const rows = list.map(compactCity)
   const chunks = []
-  for (let i = 0; i < list.length; i += CITIES_CHUNK_SIZE) {
-    chunks.push(list.slice(i, i + CITIES_CHUNK_SIZE))
+  for (let i = 0; i < rows.length; i += CITIES_CHUNK_SIZE) {
+    chunks.push(rows.slice(i, i + CITIES_CHUNK_SIZE))
   }
   const ts = Date.now()
-  const tasks = chunks.map((chunk, index) => write(`${CITIES_KEY}_${index}`, chunk))
-  return Promise.all(tasks).then((results) => {
-    const allOk = results.every((item) => item === true)
-    return write(CITIES_META_KEY, { ts: ts, chunks: chunks.length, ok: allOk }).then(() => ({
+  return writeSequential(chunks, 0, true).then((allOk) =>
+    write(CITIES_META_KEY, { ts: ts, chunks: chunks.length, ok: allOk, compact: 1 }).then(() => ({
       ts: ts,
       cities: list
     }))
-  })
+  )
 }
 
 export default {

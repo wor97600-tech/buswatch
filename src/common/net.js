@@ -6,9 +6,9 @@ const DEFAULT_TIMEOUT = NET.timeout || 12000
 const schemeMemory = {}
 const inflight = {}
 
-// 服务端支持 gzip，可把 69KB 的城市列表压到约 7KB。
-// 若手表端不支持自动解压导致解析失败，会自动关闭并重试。
-let gzipEnabled = NET.gzip !== false
+// 服务端支持 gzip（69KB → 7KB），但手表端网络库不支持自动解压，
+// 因此默认关闭；如需启用可把 config.net.gzip 设为 true。
+let gzipEnabled = NET.gzip === true
 
 export function setGzipEnabled(value) {
   gzipEnabled = Boolean(value)

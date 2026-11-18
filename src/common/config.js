@@ -17,7 +17,8 @@ const config = {
     preferHttps: false,
     timeout: 9000,
     hedgeDelay: 3000,
-    retryDelay: 600
+    retryDelay: 600,
+    gzip: false
   },
   cache: {
     search: 5 * 60 * 1000,
