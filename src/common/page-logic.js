@@ -178,24 +178,12 @@ const pageLogic = {
       // 诊断：未能识别页面时把路径显示在标题，便于定位
       this.headerTitle = String(currentPath() || 'no-path')
     }
-    // 先用默认城市同步渲染页面结构，避免等存储读取时出现空白
-    this.cityId = String(config.cityId)
-    this.cityName = config.cityName
-    chelaile.setCityId(this.cityId)
-    this.initView()
     const self = this
     store.getSelectedCity().then((city) => {
-      const nextId = String(city.cityId)
-      const nextName = city.cityName || config.cityName
-      if (nextId === String(self.cityId) && nextName === self.cityName) {
-        return
-      }
-      self.cityId = nextId
-      self.cityName = nextName
-      chelaile.setCityId(nextId)
-      if (self.mode === '') {
-        self.loadHome(true)
-      }
+      self.cityId = String(city.cityId)
+      self.cityName = city.cityName || config.cityName
+      chelaile.setCityId(self.cityId)
+      self.initView()
     })
   },
 
