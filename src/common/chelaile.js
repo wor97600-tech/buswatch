@@ -12,7 +12,6 @@ const SEARCH_TIMEOUT = config.chelaile.searchTimeout || 8000
 const SEARCH_RETRY = config.chelaile.searchRetry === undefined ? 2 : config.chelaile.searchRetry
 const SEARCH_OPTIONS = { timeout: SEARCH_TIMEOUT, retry: SEARCH_RETRY }
 const TTL = config.cache
-const CITIES_TTL = 7 * 24 * 60 * 60 * 1000
 
 let activeCityId = String(config.cityId)
 let citiesMemory = null
@@ -251,9 +250,10 @@ function fetchCities() {
 export function getCities(options) {
   const opts = options || {}
   const hotOnly = opts.hotOnly === true
+  // 城市列表是静态数据，永不过期：只要缓存里有就直接用
   if (!opts.force) {
     const memory = hotOnly ? hotCitiesMemory : citiesMemory
-    if (memory && Date.now() - memory.ts < CITIES_TTL) {
+    if (memory) {
       return Promise.resolve({ cities: memory.cities, cachedAt: memory.ts, stale: false })
     }
   }
@@ -272,18 +272,14 @@ export function getCities(options) {
   }
   return store.getCitiesCache().then((entry) => {
     const hasCache = Boolean(entry && Array.isArray(entry.cities) && entry.cities.length > 0)
-    const fresh = hasCache && Date.now() - entry.ts < CITIES_TTL
     if (hasCache) {
       citiesMemory = { ts: entry.ts, cities: entry.cities }
     }
     if (!opts.force && hasCache) {
-      if (!fresh) {
-        fetchCities().catch(() => null)
-      }
       return {
         cities: entry.cities,
         cachedAt: entry.ts,
-        stale: !fresh
+        stale: false
       }
     }
     return fetchCities().catch((error) => {

@@ -11,8 +11,8 @@ const CITY_KEY = 'bus_watch_city_v1'
 const CITIES_KEY = 'bus_watch_cities_v1'
 const LIMITS = {
   search: 20,
-  stop: 20,
-  line: 30,
+  stop: 40,
+  line: 40,
   board: 200
 }
 
