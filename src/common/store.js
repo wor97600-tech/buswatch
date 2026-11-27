@@ -26,6 +26,11 @@ const maps = {}
 const loaders = {}
 let stationsCache = null
 let stationsLoading = null
+let citiesCache = null
+let citiesLoading = null
+let citiesCacheChecked = false
+let citiesRevision = 0
+let cacheWriteChain = Promise.resolve()
 
 function isObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -60,6 +65,18 @@ function write(key, value) {
       resolve(false)
     }
   })
+}
+
+// 缓存写入统一排队，避免多个页面同时写整张 map 互相覆盖；
+// UI 只读取内存，不再等待存储落盘
+function enqueueCacheWrite(task) {
+  const queued = cacheWriteChain.then(task, task).catch(() => false)
+  cacheWriteChain = queued
+  return queued
+}
+
+function queueWrite(key, value) {
+  return enqueueCacheWrite(() => write(key, value))
 }
 
 function loadMap(name, key) {
@@ -101,7 +118,8 @@ function prune(map, limit) {
 
 function commit(name, key, map) {
   maps[name] = map
-  return write(key, map)
+  queueWrite(key, map)
+  return Promise.resolve(map)
 }
 
 export function loadSaved() {
@@ -172,8 +190,8 @@ export function getLineEntry(key) {
 }
 
 export function setLineEntry(key, entry) {
-  return getLineCache().then((map) => {
-    const next = Object.assign({}, map)
+  return getLineCache().then(() => {
+    const next = Object.assign({}, maps.line || {})
     next[key] = entry
     return commit('line', CACHE_KEY, prune(next, LIMITS.line))
   })
@@ -184,8 +202,8 @@ export function getSearchCache(keyword) {
 }
 
 export function setSearchCache(keyword, data) {
-  return loadMap('search', SEARCH_KEY).then((map) => {
-    const next = Object.assign({}, map)
+  return loadMap('search', SEARCH_KEY).then(() => {
+    const next = Object.assign({}, maps.search || {})
     next[keyword] = { ts: Date.now(), data: data }
     return commit('search', SEARCH_KEY, prune(next, LIMITS.search))
   })
@@ -196,8 +214,8 @@ export function getStopCache(key) {
 }
 
 export function setStopCache(key, entry) {
-  return loadMap('stop', STOP_KEY).then((map) => {
-    const next = Object.assign({}, map)
+  return loadMap('stop', STOP_KEY).then(() => {
+    const next = Object.assign({}, maps.stop || {})
     next[key] = entry
     return commit('stop', STOP_KEY, prune(next, LIMITS.stop))
   })
@@ -208,9 +226,9 @@ export function getBoardMap() {
 }
 
 export function mergeBoardMap(entries) {
-  return getBoardMap().then((map) => {
-    const next = Object.assign({}, map, entries || {})
-    return commit('board', BOARD_KEY, prune(next, LIMITS.board)).then(() => next)
+  return getBoardMap().then(() => {
+    const next = Object.assign({}, maps.board || {}, entries || {})
+    return commit('board', BOARD_KEY, prune(next, LIMITS.board))
   })
 }
 
@@ -316,7 +334,7 @@ const CITIES_CHUNK_SIZE = 80
 
 function compactCity(city) {
   const item = city || {}
-  return [String(item.cityId || ''), item.cityName || '', item.pinyin || '', item.hot ? 1 : 0]
+  return [String(item.cityId || ''), item.cityName || '', item.pinyin || '']
 }
 
 function expandCity(row) {
@@ -324,16 +342,14 @@ function expandCity(row) {
     return {
       cityId: String(row[0] || ''),
       cityName: row[1] || '',
-      pinyin: row[2] || '',
-      hot: row[3] === 1
+      pinyin: row[2] || ''
     }
   }
   const item = row || {}
   return {
     cityId: String(item.cityId || ''),
     cityName: item.cityName || '',
-    pinyin: item.pinyin || '',
-    hot: item.hot === true
+    pinyin: item.pinyin || ''
   }
 }
 
@@ -347,7 +363,14 @@ function writeSequential(items, index, allOk) {
 }
 
 export function getCitiesCache() {
-  return read(CITIES_META_KEY, null).then((meta) => {
+  if (citiesCacheChecked) {
+    return Promise.resolve(citiesCache)
+  }
+  if (citiesLoading) {
+    return citiesLoading
+  }
+  const revision = citiesRevision
+  const task = read(CITIES_META_KEY, null).then((meta) => {
     if (!meta || !meta.chunks) {
       return null
     }
@@ -373,6 +396,25 @@ export function getCitiesCache() {
       return { ts: meta.ts || 0, cities: cities }
     })
   })
+  citiesLoading = task.then(
+    (entry) => {
+      if (revision === citiesRevision) {
+        citiesCache = entry || null
+      }
+      citiesCacheChecked = true
+      citiesLoading = null
+      return citiesCache
+    },
+    () => {
+      if (revision === citiesRevision) {
+        citiesCache = null
+      }
+      citiesCacheChecked = true
+      citiesLoading = null
+      return citiesCache
+    }
+  )
+  return citiesLoading
 }
 
 export function setCitiesCache(cities) {
@@ -383,12 +425,17 @@ export function setCitiesCache(cities) {
     chunks.push(rows.slice(i, i + CITIES_CHUNK_SIZE))
   }
   const ts = Date.now()
-  return writeSequential(chunks, 0, true).then((allOk) =>
-    write(CITIES_META_KEY, { ts: ts, chunks: chunks.length, ok: allOk, compact: 1 }).then(() => ({
-      ts: ts,
-      cities: list
-    }))
+  const entry = { ts: ts, cities: list }
+  citiesRevision += 1
+  citiesCache = entry
+  citiesCacheChecked = true
+  citiesLoading = null
+  enqueueCacheWrite(() =>
+    writeSequential(chunks, 0, true).then((allOk) =>
+      write(CITIES_META_KEY, { ts: ts, chunks: chunks.length, ok: allOk, compact: 1 })
+    )
   )
+  return Promise.resolve(entry)
 }
 
 export default {

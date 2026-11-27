@@ -56,6 +56,10 @@
 .back-hit:active {
   opacity: 0.6;
 }
+.header-spacer {
+  width: 76px;
+  height: 1px;
+}
 .title2 {
   flex: 1;
   font-size: 21px;
@@ -77,7 +81,7 @@
   height: 40px;
   padding: 0 18px;
   border-radius: 20px;
-  background-color: #16261e;
+  background-color: #35d07f;
   flex-direction: row;
   align-items: center;
   justify-content: center;
@@ -88,15 +92,18 @@
   border-radius: 18px;
 }
 .refresh-btn.busy {
-  background-color: #1d2f26;
+  background-color: #ffb020;
 }
 .refresh-btn:active {
   opacity: 0.6;
 }
 .refresh-text {
   font-size: 15px;
-  color: #35d07f;
+  color: #04140b;
   font-weight: bold;
+}
+.refresh-btn.busy .refresh-text {
+  color: #201600;
 }
 .empty {
   flex: 1;
@@ -268,13 +275,17 @@
 .updated {
   flex: 1;
   font-size: 12px;
-  color: #5f5f5f;
+  color: #a5b8ac;
+}
+.updated.busy {
+  color: #ffbf4d;
+  font-weight: bold;
 }
 .search-btn {
   height: 38px;
   padding: 0 18px;
   border-radius: 19px;
-  background-color: #16261e;
+  background-color: #35d07f;
   align-items: center;
   justify-content: center;
 }
@@ -283,7 +294,7 @@
 }
 .search-btn-text {
   font-size: 15px;
-  color: #35d07f;
+  color: #04140b;
   font-weight: bold;
 }
 .retry {
@@ -338,16 +349,26 @@
   height: 44px;
   padding: 0 16px;
   border-radius: 22px;
-  background-color: #16261e;
+  background-color: #35d07f;
   align-items: center;
   justify-content: center;
+}
+.sbtn.busy {
+  background-color: #ffb020;
 }
 .sbtn:active {
   opacity: 0.6;
 }
 .sbtn-text {
   font-size: 16px;
-  color: #35d07f;
+  color: #04140b;
+  font-weight: bold;
+}
+.sbtn.busy .sbtn-text {
+  color: #201600;
+}
+.tip.busy {
+  color: #ffbf4d;
   font-weight: bold;
 }
 .tip {

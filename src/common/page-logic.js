@@ -7,6 +7,25 @@ import core from './realtime-core'
 import chelaile from './chelaile'
 import router from '@blueos.app.appmanager.router'
 import session from './session'
+import { beginCitySearch, filterCities } from './city-search'
+
+// 先让忙碌态完成首帧渲染，再执行可能阻塞的筛选或请求
+const SEARCH_START_DELAY_MS = 40
+// 即使命中内存缓存，也短暂保留反馈，避免按钮像没响应
+const SEARCH_MIN_FEEDBACK_MS = 220
+
+// 全国城市索引只在城市页注入，避免把约 14KB 数据重复打进每个页面
+let builtinCityList = []
+
+export function setBuiltInCities(rows) {
+  builtinCityList = (Array.isArray(rows) ? rows : [])
+    .map((row) => ({
+      cityId: String((row && row[0]) || ''),
+      cityName: (row && row[1]) || '',
+      pinyin: (row && row[2]) || ''
+    }))
+    .filter((city) => city.cityId && city.cityName)
+}
 
 function currentPath() {
   try {
@@ -35,6 +54,10 @@ function inferMode(payload) {
   const data = readPayload(payload)
   if (!data) {
     return ''
+  }
+  const view = String(data.view || '')
+  if (view === 'search' || view === 'city' || view === 'station' || view === 'line') {
+    return view
   }
   if (data.context) {
     return 'line'
@@ -95,6 +118,16 @@ function savedLineKey(stationId, lineId) {
 function boardKey(saved) {
   const cityId = String((saved && saved.cityId) || config.legacyCityId)
   return `${cityId}_${saved.stationId}_${saved.lineId}`
+}
+
+function buildCityItem(city, cityId) {
+  return {
+    key: `city_${city.cityId}`,
+    cityId: city.cityId,
+    cityName: city.cityName,
+    pinyin: city.pinyin,
+    selected: String(city.cityId) === String(cityId)
+  }
 }
 
 function clipText(value, max) {
@@ -179,12 +212,35 @@ const pageLogic = {
       this.headerTitle = String(currentPath() || 'no-path')
     }
     const self = this
-    store.getSelectedCity().then((city) => {
-      self.cityId = String(city.cityId)
-      self.cityName = city.cityName || config.cityName
-      chelaile.setCityId(self.cityId)
-      self.initView()
-    })
+    const earlyView = this.mode === 'city' || this.mode === 'search'
+    // 搜索与城市页先渲染本地界面，避免等待本地存储时出现空白页
+    if (earlyView) {
+      this.initView()
+    }
+    const loadSelectedCity = () => {
+      store.getSelectedCity().then((city) => {
+        self.cityId = String(city.cityId)
+        self.cityName = city.cityName || config.cityName
+        chelaile.setCityId(self.cityId)
+        if (!earlyView) {
+          self.initView()
+          return
+        }
+        if (self.mode === 'city') {
+          self.cityList = (self.cityList || []).map((item) =>
+            Object.assign({}, item, {
+              selected: String(item.cityId) === String(self.cityId)
+            })
+          )
+        }
+      })
+    }
+    // 城市页和搜索页先完成首帧，再读取已选城市，避免存储慢时阻塞页面切换
+    if (earlyView && typeof setTimeout === 'function') {
+      setTimeout(loadSelectedCity, 0)
+    } else {
+      loadSelectedCity()
+    }
   },
 
   initView() {
@@ -202,22 +258,7 @@ const pageLogic = {
       return
     }
     if (this.mode === 'city') {
-      this.headerTitle = '选择城市'
-      this.cityQuery = ''
-      this.cityList = []
-      this.citySearching = false
-      this.cityDownloading = false
-      this.cityCacheReady = false
-      this.cityHint = '点「下载城市缓存」获取全国城市'
-      const self = this
-      store.getCitiesCache().then((entry) => {
-        if (entry && Array.isArray(entry.cities) && entry.cities.length > 0) {
-          self.cityAll = entry.cities
-          self.cityCacheReady = true
-          self.cityHint = `城市缓存已就绪（${entry.cities.length} 个城市）`
-          self.applyCityFilter()
-        }
-      })
+      this.initCityView()
       return
     }
     if (this.mode === 'station') {
@@ -277,6 +318,56 @@ const pageLogic = {
     }
   },
 
+  initCityView() {
+    this.stopCitySearchTimers()
+    this.headerTitle = '选择城市'
+    this.cityQuery = ''
+    this.cityList = []
+    this.citySearching = false
+    this.cityDownloading = false
+    // 内置全国城市索引让首次搜索直接本地命中，不必先下载约 69KB 列表
+    this.cityCacheReady = builtinCityList.length > 0
+    this.cityAll = builtinCityList.slice()
+    this.cityError = ''
+    this.cityHint = '输入城市名或拼音后点「搜索」'
+    const self = this
+    const token = (this._cityToken || 0) + 1
+    this._cityToken = token
+
+    const loadCache = () => {
+      if (token !== self._cityToken) {
+        return Promise.resolve(null)
+      }
+      return store
+        .getCitiesCache()
+        .then((entry) => {
+          if (token !== self._cityToken) {
+            return null
+          }
+          if (entry && Array.isArray(entry.cities) && entry.cities.length > 0) {
+            self.cityAll = entry.cities
+            self.cityCacheReady = true
+            if (!self.citySearching && !String(self.cityQuery || '').trim()) {
+              self.cityHint = '输入城市名或拼音后点「搜索」'
+            }
+            return entry.cities
+          }
+          return null
+        })
+        .catch(() => null)
+    }
+
+    // 首帧渲染后再读分块缓存；进入城市页不发起任何网络请求
+    this._cityCachePromise = new Promise((resolve) => {
+      if (typeof setTimeout === 'function') {
+        setTimeout(() => {
+          loadCache().then(resolve)
+        }, 0)
+      } else {
+        loadCache().then(resolve)
+      }
+    })
+  },
   onShow() {
     if (!this._ready) {
       return
@@ -339,7 +430,26 @@ const pageLogic = {
     return false
   },
 
+  stopCitySearchTimers() {
+    if (this._cityRunTimer) {
+      clearTimeout(this._cityRunTimer)
+      this._cityRunTimer = null
+    }
+    if (this._cityFinishTimer) {
+      clearTimeout(this._cityFinishTimer)
+      this._cityFinishTimer = null
+    }
+  },
+
   stopTimers() {
+    if (this._searchStartTimer) {
+      clearTimeout(this._searchStartTimer)
+      this._searchStartTimer = null
+    }
+    if (this._searchFinishTimer) {
+      clearTimeout(this._searchFinishTimer)
+      this._searchFinishTimer = null
+    }
     if (this._searchTimer) {
       clearTimeout(this._searchTimer)
       this._searchTimer = null
@@ -356,7 +466,17 @@ const pageLogic = {
       clearTimeout(this._stationSlowTimer)
       this._stationSlowTimer = null
     }
+    if (this._lineTimer) {
+      clearTimeout(this._lineTimer)
+      this._lineTimer = null
+    }
+    if (this._lineSlowTimer) {
+      clearTimeout(this._lineSlowTimer)
+      this._lineSlowTimer = null
+    }
+    this.stopCitySearchTimers()
     this._stationToken = (this._stationToken || 0) + 1
+    this._lineToken = (this._lineToken || 0) + 1
   },
 
   goBack() {
@@ -376,8 +496,17 @@ const pageLogic = {
 
   onKeywordChange(event) {
     const raw = event && event.value !== undefined ? event.value : event
-    if (typeof raw === 'string' || typeof raw === 'number') {
-      this.keyword = String(raw)
+    const nextKeyword =
+      typeof raw === 'string' || typeof raw === 'number' ? String(raw) : String(this.keyword || '')
+    const changed = nextKeyword !== String(this.keyword || '')
+    this.keyword = nextKeyword
+    if (this.searching && changed) {
+      this.stopTimers()
+      this._searchToken = (this._searchToken || 0) + 1
+      this.searching = false
+      this.searchResults = []
+      this.searchStations = []
+      this.searchTip = ''
     }
     if (this.searchTip === '请先输入关键词') {
       this.searchTip = ''
@@ -400,15 +529,22 @@ const pageLogic = {
     if (this.searching) {
       return
     }
+    // 先让“查找中…”进入当前帧，再读取输入框和启动检索
+    this.searching = true
+    this.searchTip = '查找中…'
+    this.searchResults = []
+    this.searchStations = []
+
     let keyword = String(this.keyword || '').trim()
     if (!keyword) {
       keyword = this.readInputValue().trim()
     }
     if (!keyword) {
+      this.searching = false
       this.searchTip = '请先输入关键词'
       return
     }
-    this.startSearch(keyword)
+    this.startSearch(keyword, true)
   },
 
   openCityPicker() {
@@ -416,35 +552,20 @@ const pageLogic = {
     router.push({ uri: '/pages/City', params: { view: 'city' } })
   },
 
-  loadCityList(force) {
-    const self = this
-    this.cityError = ''
-    chelaile
-      .getCities({ force: Boolean(force), hotOnly: true })
-      .then((result) => {
-        self.cityHot = result.cities || []
-        self.cityHint = ''
-        self.applyCityFilter()
-        if (result.stale) {
-          self.cityHint = `${self.cityHint} · 缓存`.trim()
-        }
-      })
-      .catch((error) => {
-        self.cityError = `城市列表加载失败：${net.describeError(error)}`
-        self.cityHint = ''
-      })
-  },
-
   onCityQueryChange(event) {
     const raw = event && event.value !== undefined ? event.value : event
     if (typeof raw === 'string' || typeof raw === 'number') {
       this.cityQuery = String(raw)
     }
-    if (!String(this.cityQuery || '').trim() || (this.cityAll && this.cityAll.length > 0)) {
-      this.applyCityFilter()
-    }
+    this.stopCitySearchTimers()
+    this._citySearchToken = (this._citySearchToken || 0) + 1
+    this.citySearching = false
+    this.cityError = ''
+    this.cityList = []
+    this.cityHint = String(this.cityQuery || '').trim()
+      ? '点「搜索」查找城市'
+      : '输入城市名或拼音后点「搜索」'
   },
-
   readCityInput() {
     if (typeof this.$element !== 'function') {
       return ''
@@ -466,22 +587,24 @@ const pageLogic = {
     this.cityError = ''
     this.cityHint = '正在下载城市缓存…'
     chelaile
-      .getCities({ hotOnly: false, force: true })
+      .getCities({ force: true })
       .then((result) => {
+        const cities = result.cities || []
         self.cityDownloading = false
-        self.cityAll = result.cities || []
-        self._cityAllFallback = false
-        self.cityCacheReady = self.cityAll.length > 0
+        self.cityAll = cities
+        self.cityCacheReady = cities.length > 0
+        self._citySearchToken = (self._citySearchToken || 0) + 1
+        self.citySearching = false
+        self.cityList = []
         if (self.cityCacheReady) {
-          self.cityHint = `城市缓存已就绪（${self.cityAll.length} 个城市）`
-          self.applyCityFilter()
+          self.cityHint = `城市缓存已就绪（${cities.length} 个城市）${result.stale ? ' · 缓存' : ''}`
         } else {
           self.cityHint = '城市缓存为空'
         }
       })
       .catch((error) => {
         self.cityDownloading = false
-        self.cityHint = ''
+        self.cityHint = '城市缓存下载失败'
         self.cityError = `城市缓存下载失败：${net.describeError(error)}`
       })
   },
@@ -490,89 +613,149 @@ const pageLogic = {
     if (this.citySearching) {
       return
     }
+
+    // 点击处理器先同步提交忙碌态，读取输入框也不能挡在它前面
+    this.stopCitySearchTimers()
+    this.cityError = ''
+    this.citySearching = true
+    this.cityHint = '查找中…'
+    this.cityList = []
+
     const input = this.readCityInput().trim()
     if (input) {
       this.cityQuery = input
     }
-    if (!String(this.cityQuery || '').trim()) {
-      this.applyCityFilter()
+    const query = String(this.cityQuery || '').trim()
+    if (!query) {
+      this.citySearching = false
       this.cityHint = '请先输入城市名或拼音'
       return
     }
-    this.cityError = ''
-    this.citySearching = true
-    this.cityHint = '查找中…'
+
     const self = this
     const startedAt = Date.now()
-    const apply = () => {
+    const token = (this._citySearchToken || 0) + 1
+    this._citySearchToken = token
+    const isCurrent = () => self._citySearchToken === token
+    let resultScheduled = false
+
+    const finish = (matches, note) => {
+      if (!isCurrent()) {
+        return
+      }
       self.citySearching = false
-      self.applyCityFilter()
+      self.cityList = matches.slice(0, 20).map((city) => buildCityItem(city, self.cityId))
+      const suffix = note ? ` · ${note}` : ''
+      self.cityHint = matches.length
+        ? `找到 ${matches.length} 个城市${suffix}`
+        : `没有匹配的城市${suffix}`
     }
-    // 全量列表有本地缓存时几乎瞬时返回，保证「查找中」至少可见一段时间
-    const finish = () => {
-      const remain = 400 - (Date.now() - startedAt)
-      if (remain > 0) {
-        setTimeout(apply, remain)
-      } else {
+
+    const settle = (apply) => {
+      if (!isCurrent() || resultScheduled) {
+        return
+      }
+      resultScheduled = true
+      const remain = Math.max(0, SEARCH_MIN_FEEDBACK_MS - (Date.now() - startedAt))
+      const commit = () => {
+        self._cityFinishTimer = null
+        if (!isCurrent()) {
+          return
+        }
         apply()
       }
+      if (remain > 0) {
+        self._cityFinishTimer = setTimeout(commit, remain)
+      } else {
+        commit()
+      }
     }
-    if (self.cityAll && self.cityAll.length > 0 && !self._cityAllFallback) {
-      finish()
-      return
-    }
-    chelaile
-      .getCities({ hotOnly: false })
-      .then((result) => {
-        self.cityAll = result.cities || []
-        self._cityAllFallback = false
-        finish()
-      })
-      .catch((error) => {
-        self.citySearching = false
-        if (self.cityHot && self.cityHot.length > 0) {
-          self.cityAll = self.cityHot.slice()
-          self._cityAllFallback = true
-          self.applyCityFilter()
-          self.cityHint = `${self.cityHint} · 完整列表加载失败`.trim()
-        } else {
-          self.cityError = `城市查找失败：${net.describeError(error)}`
-          self.cityHint = ''
-        }
-      })
-  },
 
+    const applyCities = (cities, note) => {
+      self.cityAll = cities
+      self.cityCacheReady = cities.length > 0
+      settle(() => finish(filterCities(cities, query), note))
+    }
+
+    const loadRemote = () => {
+      if (!isCurrent()) {
+        return
+      }
+      chelaile
+        .getCities({ preferNetwork: true })
+        .then((result) => {
+          if (!isCurrent()) {
+            return
+          }
+          applyCities(result.cities || [], result.stale ? '缓存' : '')
+        })
+        .catch((error) => {
+          if (!isCurrent()) {
+            return
+          }
+          settle(() => {
+            self.citySearching = false
+            self.cityList = []
+            self.cityError = `城市查找失败：${net.describeError(error)}`
+            self.cityHint = '查找失败，请稍后重试'
+          })
+        })
+    }
+
+    const runCitySearch = () => {
+      self._cityRunTimer = null
+      if (!isCurrent() || !self.citySearching) {
+        return
+      }
+
+      if ((self.cityAll || []).length > 0) {
+        applyCities(self.cityAll, '')
+        return
+      }
+
+      const progress = beginCitySearch(query, self.cityAll || [], false)
+      self.cityHint = progress.hint
+
+      // 缓存读取不阻塞网络；缓存先到就先展示，网络先到就以网络结果为准
+      Promise.resolve(self._cityCachePromise)
+        .catch(() => null)
+        .then((cities) => {
+          if (!isCurrent() || resultScheduled) {
+            return
+          }
+          if (Array.isArray(cities) && cities.length > 0) {
+            applyCities(cities, '缓存')
+          }
+        })
+      loadRemote()
+    }
+
+    this._cityRunTimer = setTimeout(runCitySearch, SEARCH_START_DELAY_MS)
+  },
   applyCityFilter() {
     const typed = String(this.cityQuery || '').trim()
-    const query = typed.toLowerCase()
-    const build = (city) => ({
-      key: `city_${city.cityId}`,
-      cityId: city.cityId,
-      cityName: city.cityName,
-      pinyin: city.pinyin,
-      hot: Boolean(city.hot),
-      selected: String(city.cityId) === String(this.cityId)
-    })
-    if (!query) {
-      const hot = (this.cityHot || []).slice(0, 12)
-      this.cityList = hot.map(build)
-      this.cityHint = hot.length ? '热门城市 · 输入城市名或拼音后点查找' : '输入城市名或拼音后点「查找」'
+    if (!typed) {
+      this.cityList = []
+      this.cityHint = '输入城市名或拼音后点「搜索」'
       return
     }
-    const all = this.cityAll || []
-    if (all.length === 0) {
-      this.cityHint = '点「查找」查询城市'
+    if (!(this.cityAll || []).length) {
+      this.cityList = []
+      this.cityHint = '点「搜索」查找城市'
       return
     }
-    const matches = all.filter(
-      (city) =>
-        String(city.cityName).indexOf(query) >= 0 ||
-        String(city.pinyin || '').toLowerCase().indexOf(query) >= 0
-    )
-    this.cityList = matches.slice(0, 20).map(build)
+    const matches = filterCities(this.cityAll, typed)
+    this.cityList = matches.slice(0, 20).map((city) => buildCityItem(city, this.cityId))
     this.cityHint = matches.length ? `找到 ${matches.length} 个城市` : '没有匹配的城市'
   },
 
+  retryCityAction() {
+    if (String(this.cityQuery || '').trim()) {
+      this.searchCities()
+      return
+    }
+    this.downloadCityCache()
+  },
   pickCity(item) {
     if (!item) {
       return
@@ -679,73 +862,100 @@ const pageLogic = {
     return items
   },
 
-  startSearch(keyword) {
-    if (this.searching) {
+  startSearch(keyword, alreadyBusy) {
+    if (this.searching && !alreadyBusy) {
       return
     }
+    this.stopTimers()
+    // 按钮和提示先同步切换，再做本地匹配与网络请求
     this.searching = true
-    this.searchTip = '搜索中...'
+    this.searchTip = '查找中…'
     this.searchResults = []
     this.searchStations = []
-    const local = this.localMatches(keyword)
-    if (local.length > 0) {
-      this.searchResults = local
-      this.searchTip = '本地关注结果 · 正在联网更新…'
-    }
+    this._searchKeyword = keyword
     this._searchToken = (this._searchToken || 0) + 1
     const token = this._searchToken
     const self = this
+    const startedAt = Date.now()
 
-    this.stopTimers()
-    this._searchTimer = setTimeout(() => {
-      this._searchTimer = null
-      if (self._searchToken !== token || !self.searching) {
-        return
-      }
-      self._searchToken = token + 1
-      self.searching = false
-      self.searchTip = '搜索超时，请检查网络后重试'
-    }, 30000)
-    this._slowTimer = setTimeout(() => {
-      this._slowTimer = null
-      if (self._searchToken !== token || !self.searching) {
-        return
-      }
-      self.searchTip = '网络较慢，正在自动重试…'
-    }, 6000)
-
-    const done = (result, note) => {
+    const settle = (apply) => {
       if (self._searchToken !== token) {
         return
       }
       self.stopTimers()
-      self.searching = false
-      self.applySearchResult(result, note)
+      const remain = Math.max(0, SEARCH_MIN_FEEDBACK_MS - (Date.now() - startedAt))
+      const commit = () => {
+        self._searchFinishTimer = null
+        if (self._searchToken !== token) {
+          return
+        }
+        apply()
+      }
+      if (remain > 0) {
+        self._searchFinishTimer = setTimeout(commit, remain)
+      } else {
+        commit()
+      }
+    }
+
+    const done = (result, note) => {
+      settle(() => {
+        self.searching = false
+        self.applySearchResult(result, note)
+      })
     }
 
     const failed = (error) => {
-      if (self._searchToken !== token) {
+      settle(() => {
+        self.searching = false
+        const suffix = self.searchResults.length > 0 ? ' · 显示本地关注结果' : ''
+        self.searchTip = `查找失败：${net.describeError(error)}${suffix}`
+      })
+    }
+
+    const runSearch = () => {
+      self._searchStartTimer = null
+      if (self._searchToken !== token || !self.searching) {
         return
       }
-      self.stopTimers()
-      self.searching = false
-      const suffix = self.searchResults.length > 0 ? ' · 显示本地关注结果' : ''
-      self.searchTip = `搜索失败：${net.describeError(error)}${suffix}`
+      const local = self.localMatches(keyword)
+      if (local.length > 0) {
+        self.searchResults = local
+        self.searchTip = '查找中… · 显示本地关注结果'
+      }
+      self._searchTimer = setTimeout(() => {
+        self._searchTimer = null
+        if (self._searchToken !== token || !self.searching) {
+          return
+        }
+        self._searchToken = token + 1
+        self.searching = false
+        self.searchTip = '查找超时，请检查网络后重试'
+      }, 12000)
+      self._slowTimer = setTimeout(() => {
+        self._slowTimer = null
+        if (self._searchToken !== token || !self.searching) {
+          return
+        }
+        self.searchTip = '网络较慢，仍在查找…'
+      }, 3500)
+
+      if (!config.chelaile || !config.chelaile.enabled) {
+        failed(new Error('车来了接口未启用'))
+        return
+      }
+
+      chelaile
+        .searchAll(keyword)
+        .then((result) => {
+          done(result, result.stale ? `缓存结果 · ${formatTime(result.cachedAt)}` : '')
+        })
+        .catch((error) => {
+          failed(error)
+        })
     }
 
-    if (!config.chelaile || !config.chelaile.enabled) {
-      failed(new Error('车来了接口未启用'))
-      return
-    }
-
-    chelaile
-      .searchAll(keyword)
-      .then((result) => {
-        done(result, result.stale ? `缓存结果 · ${formatTime(result.cachedAt)}` : '')
-      })
-      .catch((error) => {
-        failed(error)
-      })
+    this._searchStartTimer = setTimeout(runSearch, SEARCH_START_DELAY_MS)
   },
 
   applySearchResult(result, note) {
@@ -909,14 +1119,14 @@ const pageLogic = {
       if (self._stationToken === token && self.loading) {
         self.stationTip = '网络较慢，仍在加载…'
       }
-    }, 6000)
+    }, 4000)
     this._stationTimer = setTimeout(() => {
       self._stationTimer = null
       if (self._stationToken === token && self.loading) {
         self.loading = false
         self.stationTip = '加载超时，点右上「刷新」重试'
       }
-    }, 25000)
+    }, 15000)
     const done = () => {
       if (self._stationTimer) {
         clearTimeout(self._stationTimer)
@@ -1122,19 +1332,82 @@ const pageLogic = {
 
   loadLine(context, force) {
     const self = this
+    if (!context) {
+      this.loading = false
+      this.lineError = '缺少线路信息'
+      return
+    }
+    if (this._lineTimer) {
+      clearTimeout(this._lineTimer)
+      this._lineTimer = null
+    }
+    if (this._lineSlowTimer) {
+      clearTimeout(this._lineSlowTimer)
+      this._lineSlowTimer = null
+    }
+    const token = (this._lineToken || 0) + 1
+    this._lineToken = token
     this.loading = true
+    this.lineError = ''
+    const hasLine = Boolean(this.line && this.line.id)
+    const done = () => {
+      if (this._lineTimer) {
+        clearTimeout(this._lineTimer)
+        this._lineTimer = null
+      }
+      if (this._lineSlowTimer) {
+        clearTimeout(this._lineSlowTimer)
+        this._lineSlowTimer = null
+      }
+    }
+    this._lineSlowTimer = setTimeout(() => {
+      self._lineSlowTimer = null
+      if (self._lineToken !== token || !self.loading) {
+        return
+      }
+      if (hasLine) {
+        self.lineLiveSub = '网络较慢，正在刷新…'
+      } else {
+        self.lineFirstLastText = '网络较慢，仍在加载…'
+      }
+    }, 4000)
+    this._lineTimer = setTimeout(() => {
+      self._lineTimer = null
+      if (self._lineToken !== token || !self.loading) {
+        return
+      }
+      self._lineToken = token + 1
+      self.loading = false
+      if (hasLine) {
+        self.lineLiveSub = '刷新超时，显示上次结果'
+      } else {
+        self.lineError = '线路加载超时，点右上「刷新」重试'
+      }
+    }, 15000)
     chelaile
       .getLineDetail(context.lineId, context.direction, {
         force: Boolean(force),
         cityId: context.cityId || this.cityId
       })
       .then((detail) => {
+        if (self._lineToken !== token) {
+          return
+        }
+        done()
         self.loading = false
         self.applyLineDetail(detail, context)
       })
       .catch((error) => {
+        if (self._lineToken !== token) {
+          return
+        }
+        done()
         self.loading = false
-        self.lineError = `线路详情加载失败：${net.describeError(error)}`
+        if (self.line && self.line.id) {
+          self.lineLiveSub = `刷新失败：${net.describeError(error)}`
+        } else {
+          self.lineError = `线路详情加载失败：${net.describeError(error)}`
+        }
       })
   },
 
@@ -1372,7 +1645,7 @@ const pageLogic = {
       return
     }
     this.loading = true
-    this.statusText = '正在刷新...'
+    this.statusText = '正在刷新…'
     this.loadHome(true)
   },
 
@@ -1391,9 +1664,6 @@ const pageLogic = {
           self.refreshArrivals(current)
         } else {
           self.loading = false
-          if (withNetwork) {
-            chelaile.warmUp()
-          }
         }
       })
       .catch(() => {
@@ -1402,7 +1672,7 @@ const pageLogic = {
       })
   },
 
-  renderHome(board) {
+  renderHome(board, keepStatus) {
     const stats = board || {}
     const items = []
     const saved = this.savedLines || []
@@ -1441,12 +1711,14 @@ const pageLogic = {
     }
 
     this.homeItems = items
-    if (latest > 0) {
-      this.statusText = `${formatTime(latest)} 缓存 · 点刷新更新`
-    } else {
-      this.statusText = '点右上「刷新」获取实时到站'
+    if (!keepStatus) {
+      if (latest > 0) {
+        this.statusText = `${formatTime(latest)} 缓存 · 点刷新更新`
+      } else {
+        this.statusText = '点右上「刷新」获取实时到站'
+      }
+      this.loading = false
     }
-    this.loading = false
   },
 
   buildCard(saved, board) {
@@ -1493,7 +1765,7 @@ const pageLogic = {
   refreshArrivals(savedLines) {
     const self = this
     self
-      .refreshCheLaileArrivals(savedLines)
+      .refreshCheLaileArrivals(savedLines, (board) => self.renderHome(board, true))
       .then((stats) => {
         return store.getBoardMap().then((board) => {
           self.renderHome(board)
@@ -1516,7 +1788,7 @@ const pageLogic = {
       })
   },
 
-  refreshCheLaileArrivals(savedLines) {
+  refreshCheLaileArrivals(savedLines, onUpdate) {
     const usable = savedLines.filter((item) => item.physicalStId)
     if (usable.length === 0) {
       return Promise.resolve({ found: false, failed: false, updatedAt: 0 })
@@ -1544,6 +1816,17 @@ const pageLogic = {
     let found = false
     let failed = false
     let updatedAt = 0
+
+    // 每组站点返回后立即合并并通知首页刷新对应卡片，不再等全部站点
+    const publish = () => {
+      if (typeof onUpdate !== 'function') {
+        return Promise.resolve(null)
+      }
+      return store.mergeBoardMap(updates).then((board) => {
+        onUpdate(board)
+        return board
+      })
+    }
 
     const tasks = Object.keys(groups).map((key) => {
       const group = groups[key]
@@ -1573,6 +1856,7 @@ const pageLogic = {
               }
             }
           })
+          return publish()
         })
         .catch(() => {
           failed = true
@@ -1581,7 +1865,12 @@ const pageLogic = {
 
     return Promise.all(tasks)
       .then(() => store.mergeBoardMap(updates))
-      .then(() => ({ found: found, failed: failed, updatedAt: updatedAt }))
+      .then((board) => {
+        if (typeof onUpdate === 'function' && Object.keys(updates).length > 0) {
+          onUpdate(board)
+        }
+        return { found: found, failed: failed, updatedAt: updatedAt }
+      })
   },
 
   onHomeTap(item) {

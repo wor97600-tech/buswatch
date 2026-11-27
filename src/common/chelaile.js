@@ -7,15 +7,17 @@ const HOST = config.chelaile.host
 const TIMEOUT = config.chelaile.timeout
 const RETRY = config.chelaile.retry
 const SLOW_TIMEOUT = config.chelaile.slowTimeout || 20000
-const SLOW_RETRY = config.chelaile.slowRetry || 2
+const SLOW_RETRY = config.chelaile.slowRetry === undefined ? 1 : config.chelaile.slowRetry
 const SEARCH_TIMEOUT = config.chelaile.searchTimeout || 8000
 const SEARCH_RETRY = config.chelaile.searchRetry === undefined ? 2 : config.chelaile.searchRetry
 const SEARCH_OPTIONS = { timeout: SEARCH_TIMEOUT, retry: SEARCH_RETRY }
+const CITY_TIMEOUT = config.chelaile.cityTimeout || 12000
+const CITY_RETRY = config.chelaile.cityRetry === undefined ? 0 : config.chelaile.cityRetry
 const TTL = config.cache
 
 let activeCityId = String(config.cityId)
 let citiesMemory = null
-let hotCitiesMemory = null
+let citiesRequest = null
 
 export function setCityId(cityId) {
   const next = String(cityId === undefined || cityId === null ? '' : cityId)
@@ -186,7 +188,9 @@ export function searchAll(keyword, options) {
       .then((data) => {
         const parsed = normalizeSearch(data)
         const ts = Date.now()
-        return store.setSearchCache(cacheKey, parsed).then(() => withSearchMeta(parsed, ts, false))
+        // 先返回网络结果，缓存落盘在后台排队，避免 UI 等存储写入
+        store.setSearchCache(cacheKey, parsed).catch(() => null)
+        return withSearchMeta(parsed, ts, false)
       })
       .catch((error) => {
         if (entry && entry.data) {
@@ -197,23 +201,12 @@ export function searchAll(keyword, options) {
   })
 }
 
-let warmedUp = false
-
-export function warmUp() {
-  if (warmedUp || !isEnabled()) {
-    return
-  }
-  warmedUp = true
-  searchAll('国贸').catch(() => null)
-}
-
 function normalizeCity(city) {
   const item = city || {}
   return {
     cityId: String(item.cityId || ''),
     cityName: item.cityName || '',
-    pinyin: item.pinyin || '',
-    hot: item.hot === true
+    pinyin: item.pinyin || ''
   }
 }
 
@@ -229,50 +222,64 @@ function validCities(data) {
   return cities
 }
 
-function fetchHotCities() {
-  return request('/v1/cities', { hot_only: 1 }).then((data) => {
-    const cities = validCities(data)
-    hotCitiesMemory = { ts: Date.now(), cities: cities }
-    return { cities: cities, cachedAt: hotCitiesMemory.ts, stale: false }
-  })
-}
-
 function fetchCities() {
-  return request('/v1/cities', { hot_only: 0 }, { timeout: SLOW_TIMEOUT, retry: SLOW_RETRY }).then((data) => {
+  if (citiesRequest) {
+    return citiesRequest
+  }
+  const task = request('/v1/cities', { hot_only: 0 }, {
+    timeout: CITY_TIMEOUT,
+    retry: CITY_RETRY
+  }).then((data) => {
     const cities = validCities(data)
-    const done = () => {
-      citiesMemory = { ts: Date.now(), cities: cities }
-      return { cities: cities, cachedAt: citiesMemory.ts, stale: false }
-    }
-    // 缓存写入失败（例如超出存储容量）不影响本次使用
-    return store.setCitiesCache(cities).then(done, done)
+    const result = { ts: Date.now(), cities: cities }
+    citiesMemory = result
+    // 缓存写入失败（例如超出存储容量）不影响本次使用，也不阻塞结果展示
+    store.setCitiesCache(cities).catch(() => null)
+    return { cities: cities, cachedAt: result.ts, stale: false }
   })
+  let tracked = null
+  tracked = task.then(
+    (result) => {
+      if (citiesRequest === tracked) {
+        citiesRequest = null
+      }
+      return result
+    },
+    (error) => {
+      if (citiesRequest === tracked) {
+        citiesRequest = null
+      }
+      throw error
+    }
+  )
+  citiesRequest = tracked
+  return tracked
 }
 
 export function getCities(options) {
   const opts = options || {}
-  const hotOnly = opts.hotOnly === true
   // 城市列表是静态数据，永不过期：只要缓存里有就直接用
-  if (!opts.force) {
-    const memory = hotOnly ? hotCitiesMemory : citiesMemory
-    if (memory) {
-      return Promise.resolve({ cities: memory.cities, cachedAt: memory.ts, stale: false })
-    }
-  }
-  if (hotOnly) {
-    return fetchHotCities().catch((error) => {
-      if (citiesMemory) {
-        return {
-          cities: citiesMemory.cities.filter((city) => city.hot),
-          cachedAt: citiesMemory.ts,
-          stale: true,
-          error: error
-        }
-      }
-      throw error
+  if (!opts.force && citiesMemory) {
+    return Promise.resolve({
+      cities: citiesMemory.cities,
+      cachedAt: citiesMemory.ts,
+      stale: false
     })
   }
-  return store.getCitiesCache().then((entry) => {
+  const cacheTask = store.getCitiesCache()
+  // 首次城市搜索时缓存读取和联网并行，缓存读取不再挡住请求
+  if (opts.preferNetwork) {
+    return fetchCities().catch((error) =>
+      cacheTask.then((entry) => {
+        if (entry && Array.isArray(entry.cities) && entry.cities.length > 0) {
+          citiesMemory = { ts: entry.ts, cities: entry.cities }
+          return { cities: entry.cities, cachedAt: entry.ts, stale: true, error: error }
+        }
+        throw error
+      })
+    )
+  }
+  return cacheTask.then((entry) => {
     const hasCache = Boolean(entry && Array.isArray(entry.cities) && entry.cities.length > 0)
     if (hasCache) {
       citiesMemory = { ts: entry.ts, cities: entry.cities }
@@ -390,9 +397,10 @@ export function getStopBoard(station, options) {
         }
         const parsed = normalizeStopDetail(data, base)
         const ts = Date.now()
-        return store
+        store
           .setStopCache(cacheKey, { staticTs: ts, liveTs: ts, data: parsed })
-          .then(() => boardResult(parsed, ts, false))
+          .catch(() => null)
+        return boardResult(parsed, ts, false)
       })
       .catch((error) => {
         if (entry && entry.data) {
@@ -499,9 +507,10 @@ export function getLineDetail(lineId, direction, options) {
         }
         const parsed = normalizeLineDetail(data, id, queryDirection)
         const ts = Date.now()
-        return store
+        store
           .setLineEntry(cacheKey, { staticTs: ts, liveTs: ts, data: parsed })
-          .then(() => lineResult(parsed, ts, false))
+          .catch(() => null)
+        return lineResult(parsed, ts, false)
       })
       .catch((error) => {
         if (entry && entry.data) {
@@ -514,7 +523,6 @@ export function getLineDetail(lineId, direction, options) {
 
 export default {
   setCityId,
-  warmUp,
   getCities,
   searchAll,
   getStopBoard,

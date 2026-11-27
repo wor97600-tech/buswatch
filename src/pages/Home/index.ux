@@ -6,7 +6,7 @@
           <text class="title">腕上公交</text>
         </div>
         <div class="refresh-btn {{ loading ? 'busy' : '' }}" onclick="refreshAll">
-          <text class="refresh-text">{{ loading ? '刷新中' : '刷新' }}</text>
+          <text class="refresh-text">{{ loading ? '刷新中…' : '↻ 刷新' }}</text>
         </div>
       </div>
 
@@ -55,7 +55,7 @@
       </list>
 
       <div class="footer" if="{{ homeItems.length > 0 }}">
-        <text class="updated">{{ statusText }}</text>
+        <text class="updated {{ loading ? 'busy' : '' }}">{{ statusText }}</text>
         <div class="search-btn" onclick="openSearch">
           <text class="search-btn-text">＋ 搜索</text>
         </div>

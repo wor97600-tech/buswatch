@@ -1,166 +1,30 @@
 <template>
   <div class="page">
-        <div class="header">
-          <div class="back-hit" onclick="goBack">
-            <text class="back">‹</text>
-          </div>
-          <text class="title2" onclick="goBack">{{ headerTitle }}</text>
-          <div class="refresh-btn small" if="{{ mode === 'station' || mode === 'line' }}" onclick="refreshCurrent">
-            <text class="refresh-text">{{ loading ? '刷新中' : '刷新' }}</text>
-          </div>
-        </div>
-
-    <div class="row" if="{{ mode === 'city' }}">
-      <input
-        class="input"
-        id="citykw"
-        type="text"
-        placeholder="城市名或拼音"
-        onchange="onCityQueryChange"
-      />
-      <div class="sbtn" onclick="searchCities">
-        <text class="sbtn-text">{{ citySearching ? '查找中' : '查找' }}</text>
+    <div class="header">
+      <div class="back-hit" onclick="goBack">
+        <text class="back">‹</text>
+      </div>
+      <text class="title2" onclick="goBack">{{ headerTitle }}</text>
+      <div class="refresh-btn small {{ loading ? 'busy' : '' }}" onclick="refreshCurrent">
+        <text class="refresh-text">{{ loading ? '刷新中…' : '↻ 刷新' }}</text>
       </div>
     </div>
 
-    <text class="tip" if="{{ mode === 'city' && cityHint }}">{{ cityHint }}</text>
-    <text class="retry" if="{{ mode === 'city' && cityError }}" onclick="loadCityList(true)">{{ cityError }} · 点此重试</text>
+    <text class="error" if="{{ lineError }}">{{ lineError }}</text>
 
-    <list class="slist city-list" if="{{ mode === 'city' && cityList.length > 0 }}">
-      <list-item
-        class="city-item"
-        type="city"
-        tid="key"
-        for="{{(index, item) in cityList}}"
-        onclick="pickCity(item)"
-      >
-        <div class="item-inner">
-          <text class="city-name {{ item.selected ? 'city-selected' : '' }}">{{ item.cityName }}</text>
-          <text class="city-meta">{{ item.hot ? '热门' : item.pinyin }}</text>
-        </div>
-      </list-item>
-    </list>
-
-    <div class="city-bar" if="{{ mode === 'search' }}" onclick="openCityPicker">
-      <text class="city-bar-label">查询城市</text>
-      <text class="city-bar-name">{{ cityName }} ›</text>
-    </div>
-
-    <div class="row" if="{{ mode === 'search' }}">
-      <input
-        class="input"
-        id="kw"
-        type="text"
-        placeholder="地点 / 站名 / 线路"
-        onchange="onKeywordChange"
-      />
-      <div class="sbtn" onclick="doSearch">
-        <text class="sbtn-text">{{ searching ? '搜索中' : '搜索' }}</text>
-      </div>
-    </div>
-
-    <text class="tip" if="{{ mode === 'search' && searchTip }}">{{ searchTip }}</text>
-
-    <list class="slist search-list" if="{{ mode === 'search' && searchResults.length > 0 }}">
-      <list-item
-        class="item"
-        type="result"
-        tid="key"
-        for="{{(index, item) in searchResults}}"
-        onclick="pickResult(item)"
-      >
-        <div class="item-inner">
-          <text class="badge {{ item.badgeClass }}">{{ item.badge }}</text>
-          <div class="res-main">
-            <text class="res-name">{{ item.name }}</text>
-            <text class="res-sub">{{ item.sub }}</text>
-          </div>
-        </div>
-      </list-item>
-    </list>
-
-    <text class="hint" if="{{ mode === 'search' && searchResults.length === 0 && !searchTip }}">输入地点、站名或线路号后点搜索</text>
-
-    <text class="tip" if="{{ mode === 'station' && stationTip }}">{{ stationTip }}</text>
-    <text class="src" if="{{ mode === 'station' && stationUpdatedText }}">{{ stationUpdatedText }}</text>
-
-    <list class="slist station-list" if="{{ mode === 'station' && stationLines.length > 0 }}">
-      <list-item
-        class="sline"
-        type="sline"
-        tid="key"
-        for="{{(index, item) in stationLines}}"
-      >
-        <div class="item-inner">
-          <div class="sline-main" onclick="openLineFromStation(item)">
-            <div class="sline-top">
-              <text class="sline-name">{{ item.shortName }}</text>
-              <text class="sline-eta {{ item.hasEta ? 'on' : '' }}">{{ item.etaText }}</text>
-            </div>
-            <text class="sline-sub">{{ item.dirText }}</text>
-            <text class="sline-time">{{ item.timeText }}</text>
-          </div>
-          <div class="sline-fav {{ item.followed ? 'on' : '' }}" onclick="toggleFollowLine(item)">
-            <text class="sline-fav-text">{{ item.followed ? '✓' : '＋' }}</text>
-          </div>
-        </div>
-      </list-item>
-    </list>
-
-    <div class="foot2" if="{{ mode === 'station' }}">
-      <div class="wide-btn {{ stationFav ? 'off' : '' }}" onclick="toggleFollowStation">
-        <text class="wide-text">{{ stationFav ? '已关注本站 · 点此取消' : '关注本站' }}</text>
-      </div>
-    </div>
-
-    <div class="poi-box" if="{{ mode === 'poi' }}">
-      <text class="poi-name">{{ poi.name }}</text>
-      <text class="poi-addr">{{ poi.address || '暂无地址信息' }}</text>
-      <text class="poi-meta" if="{{ poi.tag || poi.district }}">{{ poi.tag }}{{ poi.district ? ' · ' + poi.district : '' }}</text>
-      <text class="poi-loc" if="{{ poi.location }}">经纬度 {{ poi.location }}</text>
-    </div>
-
-    <text class="src" if="{{ mode === 'poi' && poiStations.length > 0 }}">相关公交站</text>
-
-    <list class="slist poi-list" if="{{ mode === 'poi' && poiStations.length > 0 }}">
-      <list-item
-        class="item"
-        type="station"
-        tid="key"
-        for="{{(index, item) in poiStations}}"
-        onclick="pickResult(item)"
-      >
-        <div class="item-inner">
-          <text class="badge badge-st">站点</text>
-          <div class="res-main">
-            <text class="res-name">{{ item.name }}</text>
-            <text class="res-sub">{{ item.sub }}</text>
-          </div>
-        </div>
-      </list-item>
-    </list>
-
-    <div class="foot2" if="{{ mode === 'poi' }}">
-      <div class="wide-btn" onclick="searchPoiStations">
-        <text class="wide-text">搜索此地点公交站</text>
-      </div>
-    </div>
-
-    <text class="error" if="{{ mode === 'line' && lineError }}">{{ lineError }}</text>
-
-    <div class="summary" if="{{ mode === 'line' && !lineError }}">
+    <div class="summary" if="{{ !lineError }}">
       <text class="full-name">{{ lineName }}</text>
       <text class="summary-line">{{ lineFirstLastText }}</text>
       <text class="summary-line" if="{{ line.intervalText }}">{{ line.intervalText }}</text>
       <text class="progress" if="{{ currentSeq > 0 }}">第 {{ currentSeq }} / {{ stops.length }} 站</text>
     </div>
 
-    <div class="live" if="{{ mode === 'line' && !lineError }}">
+    <div class="live" if="{{ !lineError }}">
       <text class="live-title">{{ lineLiveText }}</text>
       <text class="live-sub">{{ lineLiveSub }}</text>
     </div>
 
-    <list class="stops" if="{{ mode === 'line' && stops.length > 0 }}">
+    <list class="stops" if="{{ stops.length > 0 }}">
       <list-item
         class="stop {{ item.active ? 'stop-active' : '' }}"
         type="stop"
@@ -173,10 +37,11 @@
       </list-item>
     </list>
 
-    <div class="foot2" if="{{ mode === 'line' && !lineError }}">
+    <div class="foot2" if="{{ !lineError }}">
       <div class="wide-btn {{ lineFollowed ? 'off' : '' }}" onclick="toggleFollowLineCurrent">
         <text class="wide-text">{{ lineFollowed ? '已关注 · 点此取消' : '关注此站线路' }}</text>
       </div>
+    </div>
   </div>
 </template>
 

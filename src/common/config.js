@@ -5,19 +5,21 @@ const config = {
   chelaile: {
     enabled: true,
     host: 'ts-api.tundrey.com',
-    timeout: 9000,
+    timeout: 8000,
     retry: 1,
-    slowTimeout: 20000,
-    slowRetry: 2,
-    searchTimeout: 8000,
-    searchRetry: 2
+    slowTimeout: 9000,
+    slowRetry: 0,
+    searchTimeout: 5000,
+    searchRetry: 0,
+    cityTimeout: 8000,
+    cityRetry: 0
   },
   net: {
     allowHttps: false,
     preferHttps: false,
-    timeout: 9000,
+    timeout: 8000,
     hedgeDelay: 3000,
-    retryDelay: 600
+    retryDelay: 400
   },
   cache: {
     search: 5 * 60 * 1000,
